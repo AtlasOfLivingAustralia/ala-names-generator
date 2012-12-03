@@ -1,0 +1,55 @@
+1000		kingdom
+1200		subkingdom
+1800		superphylum
+2000		phylum	div	division
+2200		subphylum	subdivision
+2400		cohort
+2800		superclass
+3000		class	cl
+3200		subclass	subcl
+3350		infraclass
+3800		superorder	superordo
+4000		order	ordo
+4200		suborder	subordo
+4350		infraorder
+4400		parvorder
+4450	Zoological	zoological_division	division
+4500		superfamily
+5000		family	fam
+5500		subfamily	subf	subfam	Aggregate Genera
+5550		supertribe
+5600		tribe	trib
+5700		subtribe	subtrib
+5999		suprageneric	suprageneric taxon of undefined rank	Higher Taxon
+6000		genus	gen
+6001		nothogenus
+6500		subgenus	subgen	Aggregate Species
+6600		section	sect
+6700		subsection	subsect
+6800		series	ser
+6900		subseries	subser
+6950		speciesgroup
+6975		speciessubgroup
+7000		species	sp
+7001		nothospecies
+8000		subspecies	subsp
+8001		nothosubspecies
+8010		variety	var
+8011		nothovariety	nothovar
+8020		form	form taxon
+8021		nothoform
+8030		biovar
+8040		serovar
+8050		cultivar
+8080		pathovar
+8090		infraspecific
+8100		aberration
+8110		mutation
+8120		race
+8130		confersubspecies
+8140		formaspecialis
+8150		hybrid
+8015		subvariety	subvar
+6925		infrageneric
+8200		supergenericname
+9999		unranked
