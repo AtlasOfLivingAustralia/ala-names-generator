@@ -43,8 +43,8 @@ case class TaxonNameDTO(lsid: String, scientificName: String, title: String,
   nomenCode: String, phraseName: String, manuscriptName: String)
 
 case class TaxonConceptDTO(lsid: String, rank: String, scientificName: String, nameLsid: String,
-  lastModified: java.sql.Date, protologue: String, isAccepted: String, isDraft: String, parentLsid: Option[String], synonymType: Option[Int],
-  acceptedLsid: Option[String], lft: Int, rgt: Int, depth: Int) {
+  lastModified: java.sql.Date, protologue: String, isAccepted: String, isSuperseded: Option[String], isDraft: String, parentLsid: Option[String], synonymType: Option[Int],
+  acceptedLsid: Option[String], lft: Int, rgt: Int, depth: Int, isExcluded:Option[String], noAccTreeConcept:Option[String]) {
 
 }
 case class ColTaxonTreeDTO(taxonId: Int, name: String, rank: String, parentId: Int, lsid: String, numberOfChildren: Int)
@@ -143,6 +143,7 @@ trait ScalaQuery {
     def lastModified = column[java.sql.Date]("last_modified")
     def protologue = column[String]("protologue")
     def isAccepted = column[String]("is_accepted")
+    def isSuperseded = column[Option[String]]("is_superseded")
     def isDraft = column[String]("is_draft")
     def parentLsid = column[Option[String]]("parent_lsid")
     def synonymType = column[Option[Int]]("synonym_type")
@@ -150,9 +151,11 @@ trait ScalaQuery {
     def lft = column[Int]("lft")
     def rgt = column[Int]("rgt")
     def depth = column[Int]("depth")
+    def isExcluded = column[Option[String]]("is_excluded")
+    def noAccTreeConcept = column[Option[String]]("no_tree_concept")
 
     //define the columns that make up the select * for this table
-    def * = lsid ~ rank ~ scientificName ~ nameLsid ~ lastModified ~ protologue ~ isAccepted ~ isDraft ~ parentLsid ~ synonymType ~ acceptedLsid ~ lft ~ rgt ~ depth <> (TaxonConceptDTO, TaxonConceptDTO.unapply _)
+    def * = lsid ~ rank ~ scientificName ~ nameLsid ~ lastModified ~ protologue ~ isAccepted ~ isSuperseded ~ isDraft ~ parentLsid ~ synonymType ~ acceptedLsid ~ lft ~ rgt ~ depth ~ isExcluded ~ noAccTreeConcept <> (TaxonConceptDTO, TaxonConceptDTO.unapply _)
 
     //val columns = *.productIterator.toList.map(value => value.asInstanceOf[NamedColumn[_]].name)
 
@@ -589,6 +592,10 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
   def getTaxonNameIfIncluded(genusName: String, nomen: String): Option[TaxonNameDTO] = {
     nameInConceptsQuery.firstOption(genusName, nomen)
   }
+  //Only use this to get a taxon name that is identical at a rank family level or above.
+  //def getIdenticalTaxonName(name:String, rank:String){
+    
+  //}
 
   def getTaxonName(genusName: String, specificEpithet: Option[String], nomen: String): List[TaxonNameDTO] = {
     specificEpithet match {
@@ -612,7 +619,7 @@ class TaxonConceptJDBCDAO extends ScalaQuery {
 
   val acceptedTaxonGroupQuery = for {
     nameLsid <- Parameters[String]
-    tc <- TaxonConcept if tc.nameLsid === nameLsid && tc.isAccepted === "Y" //We only want to worry about the accepted 
+    tc <- TaxonConcept if tc.nameLsid === nameLsid && tc.isAccepted === "Y" && tc.isSuperseded === null.asInstanceOf[String] && tc.isExcluded === null.asInstanceOf[String] && tc.noAccTreeConcept === null.asInstanceOf[String] //We only want to worry about the accepted 
     _ <- Query orderBy (Ordering.Asc(Case when tc.isAccepted === "Y" then 1 when tc.isAccepted === "N" then 100 otherwise 2))
     _ <- Query orderBy (Ordering.Desc(tc.depth))
     _ <- Query orderBy (Ordering.Desc((tc.rgt - tc.lft))) //number of children
@@ -799,6 +806,16 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === null.asInstanceOf[String]
   } yield ac.lsid
 
+  val soundExGSISourceQuery = for {
+    Projection(genex, spex, inex, source) <- Parameters[String, String, String,String]
+    ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === inex && ac.source === source
+  } yield ac.lsid
+
+  val soundExGSSourceQuery = for {
+    Projection(genex, spex, source) <- Parameters[String, String,String]
+    ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === null.asInstanceOf[String] && ac.source === source
+  } yield ac.lsid
+  
   val soundExParentSIQuery = for {
     Projection(parentId, spex, inex) <- Parameters[String, String, String]
     ac <- AlaConcepts if ac.parentLsid === parentId && ac.speciesSoundEx === spex && ac.infraSoundEx === inex
@@ -818,8 +835,25 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     lsid <- Parameters[String]
     ac <- AlaConcepts if ac.parentLsid === lsid
   } yield ac
+  
+  val blacklistedQuery = for{
+    ac <- AlaConcepts if ac.rankId<7000
+    tc <- TaxonConcept if ac.lsid === tc.lsid && ( tc.scientificName.like("Unplaced%") || tc.scientificName.like("Unknown%") )
+  } yield ac
 
+  val getNameParentQuery = for {
+    lsid <- Parameters[String]
+    tc <-TaxonConcept if tc.lsid === lsid
+    ac <- AlaConcepts if ac.nameLsid === tc.nameLsid    
+  } yield ac.lsid
+  
   val insertSynQuery = "insert into ala_synonyms(lsid,name_lsid, accepted_lsid,syn_type) values(?,?,?,?)"
+    
+    
+  def getUnknownUnplacedConcepts():List[AlaConceptsDTO] ={
+    blacklistedQuery.list
+  }
+    
   //USED
   /**
    * Inserts a synonym with the supplied details into the database
@@ -835,6 +869,14 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid) select r.to_lsid,r.to_lsid,ac.lsid 
           from ala_concepts ac join relationships r on ac.lsid = r.from_lsid 
           join dictionary_relationship dr on r.relationship = dr.relationship and r.description = dr.description where to_lsid like '%name%' and dr.type in (7,11)""").first
+    
+    //insert the excluded name synonyms
+    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select r.to_lsid,r.to_lsid,r.from_lsid,9
+              from ala_concepts ac join relationships r on ac.lsid = r.from_lsid and r.relationship='excludes'""").first
+              
+    //insert the excluded names from the tree file
+    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select nc.taxon_lsid, nc.name_lsid, ac.lsid,9 
+              from nsl_taxon_concept nc left join ala_concepts ac on nc.parent_lsid = ac.lsid where excluded='Y'""").first
   }
   //USED
   /**
@@ -864,6 +906,12 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
       case _ => soundExGSIQuery.list(genex, spex, inex.get)
     }
   }
+  def getMatchSoundExSource(genex: String, spex: String, inex: Option[String],source:String):List[String]={
+    inex match {
+      case None => soundExGSSourceQuery.list(genex, spex, source)
+      case _=> soundExGSISourceQuery.list(genex, spex, inex.get, source)
+    }
+  }
   //None,tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), accepted, rankId, synonymType, gse,sse,ise
   val addConceptSQL = "insert into ala_concepts(lsid,name_lsid,parent_lsid,parent_src,src,accepted_lsid, rank_id, synonym_type, genus_sound_ex,sp_sound_ex, insp_sound_ex) values (?,?,?,?,?,?,?,?,?,?,?)"
   //        def addConcept(lsid:String,nameLsid:Option[String], parentLsid:Option[String],parentSrc:Option[Int], src:Option[Int],acceptedLsid:Option[String], rankId:Option[Int], synonymType:Option[Int], gse:Option[String],sse:Option[String],ise:Option[String]){
@@ -875,6 +923,7 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
   def truncate() = {
     updateNA("truncate ala_concepts").first
     updateNA("truncate extra_identifiers").first
+    updateNA("truncate ala_synonyms").first
   }
   /**
    * Obsolete method to insert synonyms into the ala_concepts table. Synonyms are now handled separately.
@@ -884,12 +933,16 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
     update[(String, String, Int, Int, Int)](sql).first(lsid, acceptedLsid, colId, src, synonymType)
   }
 
-  val deleteDuplicateSQL = "delete from ala_concepts where lsid = ?"
+  def getNameBasedParent(lsid:String):Option[String]={
+    getNameParentQuery.firstOption(lsid)
+  }
+  
+  val deleteConceptSQL = "delete from ala_concepts where lsid = ?"
   val insertIdentifier = "insert into extra_identifiers values(?,?)"
   val updateParentFromParentSQL = "update ala_concepts set parent_lsid = ? where parent_lsid =?"
   def removeDuplicate(lsid: String, acceptedLsid: String, lftRgt: Int) {
 
-    update[(String)](deleteDuplicateSQL).first(lsid)
+    update[(String)](deleteConceptSQL).first(lsid)
     update[(String, String)](insertIdentifier).first(acceptedLsid, lsid)
 
     if (lftRgt > 1) {
@@ -1106,6 +1159,14 @@ where ac1.parent_lsid is not null and ac2.lsid is null and r.relationship = 'inc
     (for {
       ac <- AlaConcepts if ac.lsid === lsid
     } yield ac.parentLsid ~ ac.parentSrc).update(parentLsid, parentSrc)
+  }
+  def updateChidrenParentRefs(oldParent:Option[String], newParent:Option[String]) ={
+    (for {
+      ac <- AlaConcepts if ac.parentLsid === oldParent
+    } yield ac.parentLsid ~ ac.parentSrc).update(newParent, Some(999))
+  }
+  def deleteConcept(lsid:String){
+    update[(String)](deleteConceptSQL).first(lsid)
   }
   //USED
   /**

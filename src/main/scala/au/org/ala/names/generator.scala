@@ -16,8 +16,12 @@ object NamesGenerator {
   val db = new BoneCPDatabase
   //indicates that the init threads should stop
   var stopInit = false
+  //used to store genera
+  val namecache = new org.apache.commons.collections.map.LRUMap(10000)
+  private val lock : AnyRef = new Object()
   def main(args: Array[String]) {
     var all = false
+    var most = false
     var lftRgtNSL = false
     var initNames =false
     var addApni=false
@@ -31,28 +35,48 @@ object NamesGenerator {
             opt("kingdoms","Adds missing CoL kingdoms ot the ALA names",{shouldAddMissingKingdoms = true})
             opt("class","Generate the final classification",{createClass = true})
             opt("all","Perform all phases in the correct order",{all = true})
+            opt("most","Performs all the phase EXCEPT nsl",{most=true})
             opt("clean", "Rename theold dumps so that the mysql dumps will not fail", {cleanOldDumps=true})
         }
         
         if(parser.parse(args)){
             
-          db withSession {
+          db withSession {            
             if(all || lftRgtNSL)
               generateLftRgtDepthForNSL()
-            if(all || initNames){
+            if(all || most || initNames){
               initialiseAlaConcept(true)
               fillMissingParents()
             }
-            if(all || addApni)
+            if(all || most || addApni)
               initialiseApniConcepts()
-            if(all || shouldAddMissingKingdoms)
+            if(all || most || shouldAddMissingKingdoms)
               addMissingColKingdoms()
-            if(all || createClass)
+            if(all || most || createClass)
               generateClassification(true)
-            if(all || cleanOldDumps)
+            if(all || most || cleanOldDumps)
               prepareForDump()
           }
         }
+  }
+  
+  def handleBlacklistedNames(){
+    //As of 2013-01-15: the only blacklisted names are ones that have a Unplaced or Unknown suffix and ranked above species level
+    val acs = alaDAO.getUnknownUnplacedConcepts();
+    acs.foreach{ac =>{
+      //check to see if the parent is "Unplaced"
+      var parentLsid = ac.parentLsid
+      if(ac.parentLsid.isDefined){
+        val parent = tcDAO.getByLsid(ac.parentLsid.get)
+        val sciName = parent.scientificName.toLowerCase()
+        if(sciName.startsWith("unknown") || sciName.startsWith("undefined"))
+          parentLsid = parent.parentLsid
+      }
+      //now update the children of these to point to a non-blacklisted parent
+      alaDAO.updateChidrenParentRefs(Some(ac.lsid), parentLsid)
+      //now remove the blacklisted name
+      alaDAO.deleteConcept(ac.lsid)
+    }}
   }
   
   def prepareForDump(){
@@ -127,7 +151,7 @@ object NamesGenerator {
     val queue = new ArrayBlockingQueue[String](500)
     val arrayBuf = new ArrayBuffer[Thread]()
     var i = 0
-    while (i < 25) {
+    while (i <30) {
       val t = new Thread(new ApniInitThread(queue, i))
       t.start
       arrayBuf += t
@@ -208,7 +232,10 @@ object NamesGenerator {
     arrayBuf.foreach(t => t.join)
     println("Updating the broken parent references...")
     updateParentReferences
+    println("Handling blacklisted...")
+    handleBlacklistedNames()
     //inserts all the synonyms that are referenced by name instead of taxon concept.
+    //also inserts the excluded relationships
     alaDAO.insertNameSynonyms()
 
   }
@@ -232,7 +259,7 @@ object NamesGenerator {
     })
   }
   /**
-   * A recurisive method that will add all missing ancestors to the ala concepts
+   * A recursive method that will add all missing ancestors to the ala concepts
    */
   def addMissingConcept(lsid: String) {
     val tc = tcDAO.getByLsid(lsid)
@@ -307,7 +334,8 @@ object NamesGenerator {
   /**
    * adds a single APNI concept to the ala concepts only if there is no similar name already there.
    */
-  def addApniConcept(nameLsid: String) {
+  def addApniConcept(nameLsid: String) :Option[String]= {
+    
     val list = tcDAO.getConceptsForName(nameLsid)
     if (list.size > 0) {
       val tc = list.head
@@ -315,7 +343,8 @@ object NamesGenerator {
       if (taxonName.isDefined) {
         val (gse, sse, ise) = generateSoundExs(taxonName.get)
         //now check to see if there is an existing APC concept with the same sound ex
-        val list = alaDAO.getMatchingSoundEx(gse.get, sse.get, ise)
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, ise,"APC") else List()
+       
         if (list.size > 0) {
           println("Unable to add " + nameLsid + " " + taxonName.get.scientificName + " soudexs: " + list)
         } else {
@@ -332,18 +361,85 @@ object NamesGenerator {
                 ""
             }
           }
+          
           val rank = Ranks.matchTerm(rankString, taxonName.get.nomenCode)
           val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
-
-          val alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), None, None, None, None, rankId, None, gse, sse, ise, Some("APNI"))
-
-          alaDAO.insertNewTerm(alaConcept)
-
+          val parent = findApniParent(tc, taxonName.get, rankId.get)
+          val alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), parent, None, None, None, rankId, None, gse, sse, ise, Some("APNI"))
+          lock.synchronized{
+            val currentAlaConcept = alaDAO.getAlaConceptForName(nameLsid) 
+            if(currentAlaConcept.isDefined)
+              return Some(currentAlaConcept.get.lsid)
+            else{
+               //check to see if the same name already exists as a different lsid - only check if it a family level or above
+              val sameConceptDiffName:Option[AlaConceptsDTO] = if(rankId.get >= 6000) None else {
+                    val other =tnDAO.getTaxonName(taxonName.get.scientificName, None ,"Botanical").collectFirst{case result if result.lsid != taxonName.get.lsid => result}            
+                    val otherAlaConcept = if(other.isDefined) alaDAO.getAlaConceptForName(other.get.lsid) else None
+                    otherAlaConcept
+              }
+              if(sameConceptDiffName.isDefined){
+                println("ALREADY ALA CONCEPT for same name different name lsid: " + sameConceptDiffName.get)
+                return Some(sameConceptDiffName.get.lsid)
+              }
+              else
+                alaDAO.insertNewTerm(alaConcept)
+            }
+          }
+          return Some(tc.lsid)
           //alaDAO.addAlaConcept(tc.lsid, nameLsid, rankId.get,gse,sse,ise,"APNI");
         }
       }
     }
+    return None
   }
+  
+  def findApniParent(tc:TaxonConceptDTO, tn:TaxonNameDTO, rankId:Int):Option[String]={
+    var parent = if(tc.parentLsid.isDefined) alaDAO.getNameBasedParent(tc.parentLsid.get ) else None
+    if(parent.isEmpty){
+      //generate the parent based on the genera ie attempt to locate an APC genera that is the same as the APNI
+      if(rankId >=7000 && rankId!=9999){
+        val potentialParent = getGenusName(tn)
+        if(potentialParent.isDefined)
+          parent = Some(potentialParent.get.lsid)
+      }
+      //add the missing parent concept to the list of APNI concepts.
+      if(parent.isEmpty && tc.parentLsid.isDefined){
+        val assignedParent = tcDAO.getByLsid(tc.parentLsid.get)
+        parent =addApniConcept(assignedParent.nameLsid)
+      }
+    }
+    parent
+  }
+  
+      def getGenusName(tn:TaxonNameDTO):Option[AlaConceptsDTO]={
+        val nomenCode = tn.nomenCode match{
+                case "Zoological" => "Zoological"
+                case _ => "Botanical"
+            }
+        
+        var value:Option[AlaConceptsDTO] = lock.synchronized{namecache.get((tn.genus, nomenCode)).asInstanceOf[Option[AlaConceptsDTO]]}
+        if(value == null){
+        lock.synchronized{    
+        val genusMatch = tnDAO.getTaxonName(tn.genus,None, nomenCode)
+                    if(genusMatch.size == 1){
+                        val tn = genusMatch.head
+                        println("Genus matched: " + tn.lsid + " : "+ tn.scientificName )
+                        //TODO check Genus level homonym in IRMNG
+                        
+                        //If not a homonym find the corresponding alaConcepts for this name
+                        value =alaDAO.getAlaConceptForName(tn.lsid)
+                        
+                        //value = Some(tn)
+                    }
+                    else
+                        value = None
+                    namecache.put((tn.genus,nomenCode), value)
+        }
+        }
+        value
+    }
+  
+  
   /**
    * Adds a concepts to the ala concepts. 
    */
@@ -393,9 +489,9 @@ object NamesGenerator {
       val (gse, sse, ise) = if (rankId.isEmpty || rankId.get > 6000) generateSoundExs(tn) else (None, None, None)
 
       //alaDAO.addConcept(tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), accepted, rankId, synonymType,gse,sse,ise)
-
+      val source = if(tc.lsid.startsWith("urn:lsid:biodiversity.org.au:apni")) Some("APC") else Some("AFD")
       //println(rankId)
-      val alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), None, rankId, None, gse, sse, ise, None)
+      val alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), None, rankId, None, gse, sse, ise, source)
       //println(tc.lsid +" " + tc.nameLsid+ " " + tc.parentLsid + " " + parentSrc + " " + src + " " + accepted + " " + rankId + " " + synonymType+ " " + gse + " "+ sse +  " " + ise)
       //Some(alaConcept)
       alaDAO.insertNewTerm(alaConcept)

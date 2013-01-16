@@ -22,6 +22,9 @@
 	lft int,
 	rgt int,
 	depth int,
+	is_superseded char(1),
+	is_excluded char(1),
+	no_tree_concept char(1),
 	primary key(lsid),
 	index ix_tc_name_lsid(name_lsid),
 	index ix_tc_parent(parent_lsid)
@@ -195,6 +198,13 @@
 	-- first parent of a hybrid
 	
 	update taxon_concept tc, relationships r set tc.parent_lsid = r.to_lsid where r.relationship='is hybrid child of' and r.description='first hybrid parent' and r.from_lsid = tc.lsid;	
+	-- apply superseded flag to "accepted" taxon concepts so that they do not get included as ala concepts.
+	update taxon_concept tc, relationships r set tc.is_superseded='T' where r.relationship='superseded by' and tc.lsid = r.from_lsid and tc.is_accepted='Y'
+	-- apply the excluded flag to concepts that are accpeted but excluded...
+	update taxon_concept tc, relationships r set tc.is_excluded='T' where r.relationship='excludes' and tc.name_lsid = r.to_lsid and tc.is_accepted='Y'
+	--update the not_taxon_tree flag so that we can indicate which taxon_names are marked as accepted in the taxon csv BUT are only synonyms in the tree
+	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept='T' where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid <>''
+	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept=null where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid =''
 	
 	-- ALA clasification generation tables
 	create table ala_concepts(
@@ -224,7 +234,8 @@
 		index idx_g_sound_ex(genus_sound_ex),
 		index idx_s_sound_ex(sp_sound_ex),
 		index idx_i_sound_ex(insp_sound_ex),
-		index idx_ac_col_id(col_id)
+		index idx_ac_col_id(col_id),
+		index idx_ala_source(source)
 	);
 	
 	DROP TABLE IF EXISTS ala_synonyms;
@@ -272,7 +283,9 @@
 		index ix_ala_cl_rank_id(rank_id),
 		index ix_ala_cl_accepted(accepted_lsid),
 		index ix_ala_cl_kingdom_family(kname, fname),
-		index idx_cl_name_lsid(name_lsid)
+		index idx_cl_name_lsid(name_lsid),
+		index idx_cl_lft(lft),
+		index idx_cl_rgt(rgt)
 	);
 	
 	-- This table is used to store the extra identifiers to associate with an ala_concept
