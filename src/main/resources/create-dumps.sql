@@ -1,8 +1,10 @@
 	
 	use ala_names;
-
-	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id;
+	
 	update ala_concepts ac1 join ala_concepts ac2 on ac1.parent_lsid = ac2.lsid  set ac1.parent_id = ac2.id;
+	
+	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id;
+	
 
 -- DUMP the ALA accepted concepts
 -- Query OK, 224482 rows affected (7 min 17.85 sec)
@@ -46,14 +48,14 @@
 
 	update ala_synonyms asy, ala_concepts ac set asy.accepted_id = ac.id where asy.accepted_lsid = ac.lsid;
 	
-	update ala_synonyms set id = id + (select max(id) from ala_concepts)
+
 	
-	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'col_id'
+	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'col_id', 'syn_type'
 	UNION
-	select alas.id, alas.lsid,alas.name_lsid, alas.accepted_lsid, alas.accepted_id,
+	select alas.id + (select max(id) from ala_concepts), alas.lsid,alas.name_lsid, alas.accepted_lsid, alas.accepted_id,
 	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8)  when cols.scientific_name is not null then convert(cols.scientific_name using utf8)  else ""end, 
 	case when tn.authorship is not null and alas.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and alas.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cols.author is not null then convert(cols.author using utf8) else "" end, 
-	alas.col_id
+	alas.col_id, alas.syn_type
 	INTO OUTFILE '/data/bie-staging/ala-names/ala_synonyms_dump.txt' FIELDS ENCLOSED BY '"'
 	FROM ala_synonyms alas
 	LEFT JOIN taxon_name tn on alas.name_lsid = tn.lsid
@@ -71,3 +73,13 @@
 	select asyn.name_lsid, tc.name_lsid, asyn.name_lsid
 	INTO OUTFILE '/data/bie-staging/ala-names/identifiers.txt' FIELDS ENCLOSED BY '"'
 	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid
+	
+-- DUMP the common names
+	select 'LSID', 'URI', 'Name','TaxonConcept', 'PublicationLSID','isPreferredName'
+	UNION
+	select r.to_lsid, '',tn.scientific_name, r.from_lsid,'',''
+	INTO outfile '/data/bie-staging/ala-names/AFD-common-names.csv'
+	from relationships r join taxon_name tn on r.to_lsid = tn.lsid
+	where relationship = 'has vernacular'
+	
+	

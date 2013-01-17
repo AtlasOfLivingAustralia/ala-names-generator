@@ -35,10 +35,10 @@ object NamesGenerator {
             opt("kingdoms","Adds missing CoL kingdoms ot the ALA names",{shouldAddMissingKingdoms = true})
             opt("class","Generate the final classification",{createClass = true})
             opt("all","Perform all phases in the correct order",{all = true})
-            opt("most","Performs all the phase EXCEPT nsl",{most=true})
-            opt("clean", "Rename theold dumps so that the mysql dumps will not fail", {cleanOldDumps=true})
+            opt("most","Performs all the phases EXCEPT nsl",{most=true})
+            opt("clean", "Rename the old dumps so that the mysql dumps will not fail", {cleanOldDumps=true})
         }
-        
+        println("Starting " + new java.util.Date)
         if(parser.parse(args)){
             
           db withSession {            
@@ -48,8 +48,10 @@ object NamesGenerator {
               initialiseAlaConcept(true)
               fillMissingParents()
             }
-            if(all || most || addApni)
+            if(all || most || addApni){
+              stopInit = false
               initialiseApniConcepts()
+            }
             if(all || most || shouldAddMissingKingdoms)
               addMissingColKingdoms()
             if(all || most || createClass)
@@ -58,6 +60,9 @@ object NamesGenerator {
               prepareForDump()
           }
         }
+        else
+          parser.showUsage
+        println("Ending " + new java.util.Date)
   }
   
   def handleBlacklistedNames(){
@@ -85,10 +90,12 @@ object NamesGenerator {
     val conFileName ="/data/bie-staging/ala-names/ala_accepted_concepts_dump"
     val synFileName="/data/bie-staging/ala-names/ala_synonyms_dump"
     val idFileName="/data/bie-staging/ala-names/identifiers"
+    val afdCommonFile = "/data.bie-staging/ala-names/AFD-common-names"
     val date = new java.util.Date().getTime()
     renameFile(conFileName+".txt",conFileName+date+".txt")
     renameFile(synFileName+".txt", synFileName+date+".txt")
     renameFile(idFileName+".txt", idFileName+date+".txt")
+    renameFile(afdCommonFile+".csv", afdCommonFile+date+".csv")
   }
   
   def renameFile(source:String, target:String){
@@ -402,10 +409,12 @@ object NamesGenerator {
         if(potentialParent.isDefined)
           parent = Some(potentialParent.get.lsid)
       }
-      //add the missing parent concept to the list of APNI concepts.
+      //add the missing parent concept to the list of APNI concepts if it is not a synonym.
       if(parent.isEmpty && tc.parentLsid.isDefined){
-        val assignedParent = tcDAO.getByLsid(tc.parentLsid.get)
-        parent =addApniConcept(assignedParent.nameLsid)
+        if(!alaDAO.isSynonym(tc.parentLsid.get)){
+          val assignedParent = tcDAO.getByLsid(tc.parentLsid.get)
+          parent =addApniConcept(assignedParent.nameLsid)
+        }
       }
     }
     parent

@@ -866,10 +866,20 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
    * Inserts the synonyms that are based on name_lsids instead of taxon concept lsid
    */
   def insertNameSynonyms() {
-    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid) select r.to_lsid,r.to_lsid,ac.lsid 
+    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid, syn_type) select r.to_lsid,r.to_lsid,ac.lsid,dr.id 
           from ala_concepts ac join relationships r on ac.lsid = r.from_lsid 
           join dictionary_relationship dr on r.relationship = dr.relationship and r.description = dr.description where to_lsid like '%name%' and dr.type in (7,11)""").first
     
+    //remove the self-referencing synonyms
+    updateNA("""delete from ala_synonyms where lsid = accepted_lsid and col_id is null""").first
+          
+    //delete synonyms for the names that don't exist
+    updateNA("""delete s FROM ala_synonyms s left join taxon_name tn on  s.name_lsid = tn.lsid where col_id is null and tn.lsid is null""").first
+    
+    //delete synonyms that have the same scientific name as accepted name
+    updateNA("""delete s from ala_synonyms s join ala_concepts ac on s.accepted_lsid = ac.lsid join taxon_name stn on stn.lsid = s.name_lsid 
+              join taxon_name atn on ac.name_lsid = atn.lsid where stn.scientific_name = atn.scientific_name""").first
+          
     //insert the excluded name synonyms
     updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select r.to_lsid,r.to_lsid,r.from_lsid,9
               from ala_concepts ac join relationships r on ac.lsid = r.from_lsid and r.relationship='excludes'""").first
@@ -931,6 +941,12 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
   def addSynonym(lsid: String, acceptedLsid: String, colId: Int, src: Int, synonymType: Int) {
     val sql = "insert into ala_concepts(lsid, accepted_lsid,name_lsid, src, synonym_type) values(?,?,?,?,?)"
     update[(String, String, Int, Int, Int)](sql).first(lsid, acceptedLsid, colId, src, synonymType)
+  }
+  
+  val synonymQuery = """select count(*) from ala_synonyms where lsid=?"""
+  def isSynonym(lsid:String): Boolean ={
+    val res =query[String,Int](synonymQuery).first(lsid)
+    res >0
   }
 
   def getNameBasedParent(lsid:String):Option[String]={
