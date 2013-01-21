@@ -861,6 +861,19 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
   def insertSynonym(acceptedLsid: String, lsid: String, nameLsid: String, synType: Int) {
     update[(String, String, String, Int)](insertSynQuery).first(lsid, nameLsid, acceptedLsid, synType)
   }
+  
+  def addExcludedConcepts(){
+    //update the AFD concepts as excluded
+    updateNA("""update ala_concepts ac, nsl_taxon_concept nc 
+              set ac.excluded='Y'
+              where ac.name_lsid=nc.name_lsid and nc.excluded='Y'""").first
+    //add the AFD excluded names as children of the concepts that they are excluded from
+    updateNA("""insert into ala_concepts(lsid, name_lsid, parent_lsid,rank_id,source,excluded) 
+        select r.to_lsid,r.to_lsid,ac.lsid,9999,'AFD','T' 
+        from ala_concepts ac join relationships r on ac.lsid=r.from_lsid where r.relationship='excludes' and ac.source='AFD'
+        group by r.to_lsid""").first          
+  }
+  
   //USED 
   /**
    * Inserts the synonyms that are based on name_lsids instead of taxon concept lsid
@@ -879,14 +892,14 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     //delete synonyms that have the same scientific name as accepted name
     updateNA("""delete s from ala_synonyms s join ala_concepts ac on s.accepted_lsid = ac.lsid join taxon_name stn on stn.lsid = s.name_lsid 
               join taxon_name atn on ac.name_lsid = atn.lsid where stn.scientific_name = atn.scientific_name""").first
-          
-    //insert the excluded name synonyms
-    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select r.to_lsid,r.to_lsid,r.from_lsid,9
-              from ala_concepts ac join relationships r on ac.lsid = r.from_lsid and r.relationship='excludes'""").first
-              
-    //insert the excluded names from the tree file
-    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select nc.taxon_lsid, nc.name_lsid, ac.lsid,9 
-              from nsl_taxon_concept nc left join ala_concepts ac on nc.parent_lsid = ac.lsid where excluded='Y'""").first
+//THESE are NOW being included as concepts          
+//    //insert the excluded name synonyms
+//    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select r.to_lsid,r.to_lsid,r.from_lsid,9
+//              from ala_concepts ac join relationships r on ac.lsid = r.from_lsid and r.relationship='excludes'""").first
+//              
+//    //insert the excluded names from the tree file
+//    updateNA("""insert into ala_synonyms(lsid, name_lsid, accepted_lsid,syn_type) select nc.taxon_lsid, nc.name_lsid, ac.lsid,9 
+//              from nsl_taxon_concept nc left join ala_concepts ac on nc.parent_lsid = ac.lsid where excluded='Y'""").first
   }
   //USED
   /**

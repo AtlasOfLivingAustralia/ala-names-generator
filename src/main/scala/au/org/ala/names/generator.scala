@@ -18,6 +18,9 @@ object NamesGenerator {
   var stopInit = false
   //used to store genera
   val namecache = new org.apache.commons.collections.map.LRUMap(10000)
+      val blacklist = scala.io.Source.fromURL(getClass.getResource("/blacklist.txt"), "utf-8").getLines.toList.map({value =>
+      val values = value.split("\t")
+      values(0)})
   private val lock : AnyRef = new Object()
   def main(args: Array[String]) {
     var all = false
@@ -90,12 +93,14 @@ object NamesGenerator {
     val conFileName ="/data/bie-staging/ala-names/ala_accepted_concepts_dump"
     val synFileName="/data/bie-staging/ala-names/ala_synonyms_dump"
     val idFileName="/data/bie-staging/ala-names/identifiers"
-    val afdCommonFile = "/data.bie-staging/ala-names/AFD-common-names"
+    val afdCommonFile = "/data/bie-staging/ala-names/AFD-common-names"
+    val alaHomonymsFile = "/data/bie-staging/ala-names/ala-species-homonyms"
     val date = new java.util.Date().getTime()
     renameFile(conFileName+".txt",conFileName+date+".txt")
     renameFile(synFileName+".txt", synFileName+date+".txt")
     renameFile(idFileName+".txt", idFileName+date+".txt")
     renameFile(afdCommonFile+".csv", afdCommonFile+date+".csv")
+    renameFile(alaHomonymsFile+".txt", alaHomonymsFile+date+".txt")
   }
   
   def renameFile(source:String, target:String){
@@ -170,7 +175,8 @@ object NamesGenerator {
       while (queue.size >= 490) {
         Thread.sleep(50)
       }
-      queue.add(lsid)
+      if(!blacklist.contains(lsid))
+        queue.add(lsid)
       count += 1
       if (count % 1000 == 0) {
         finishTime = System.currentTimeMillis
@@ -220,7 +226,8 @@ object NamesGenerator {
       while (queue.size >= 490) {
         Thread.sleep(50)
       }
-      queue.add(tn)
+      if(!blacklist.contains(tn.lsid))
+        queue.add(tn)
       count += 1
       if (count % 1000 == 0) {
         finishTime = System.currentTimeMillis
@@ -241,6 +248,7 @@ object NamesGenerator {
     updateParentReferences
     println("Handling blacklisted...")
     handleBlacklistedNames()
+    alaDAO.addExcludedConcepts()
     //inserts all the synonyms that are referenced by name instead of taxon concept.
     //also inserts the excluded relationships
     alaDAO.insertNameSynonyms()

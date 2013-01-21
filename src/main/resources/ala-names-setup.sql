@@ -226,6 +226,7 @@
 		insp_sound_ex varchar(255),
 		col_id int,		
 		source char(4),
+		excluded char(1),
 		
 		unique index idx_ac_lsid(lsid),
 		index idx_ala_name_lsid(name_lsid),

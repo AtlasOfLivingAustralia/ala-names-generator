@@ -66,13 +66,13 @@
 -- Query OK, 435585 rows affected (4 min 54.85 sec)
 	select 'name_lsid','lsid','accepted_lsid'
 	UNION
-	select ac.name_lsid, tc.lsid, ac.lsid
+	select ac.name_lsid, ac.lsid, tc.lsid
 	from ala_concepts ac join taxon_concept tc on ac.name_lsid = tc.name_lsid
 	where ac.lsid <> tc.lsid
 	UNION
 	select asyn.name_lsid, tc.name_lsid, asyn.name_lsid
 	INTO OUTFILE '/data/bie-staging/ala-names/identifiers.txt' FIELDS ENCLOSED BY '"'
-	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid
+	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid;
 	
 -- DUMP the common names
 	select 'LSID', 'URI', 'Name','TaxonConcept', 'PublicationLSID','isPreferredName'
@@ -80,6 +80,15 @@
 	select r.to_lsid, '',tn.scientific_name, r.from_lsid,'',''
 	INTO outfile '/data/bie-staging/ala-names/AFD-common-names.csv'
 	from relationships r join taxon_name tn on r.to_lsid = tn.lsid
-	where relationship = 'has vernacular'
+	where relationship = 'has vernacular';
 	
+	-- DUMP the potential species homonyms
+
+	select distinct kname, pname, cname, oname, fname, gname, tn1.scientific_name,tn1.lsid, tn1.authorship, tn1.author_year,ac1.source
+	INTO OUTFILE '/data/bie-staging/ala-names/ala-species-homonyms.txt'
+	from ala_concepts ac1 join taxon_name tn1 on ac1.name_lsid = tn1.lsid join taxon_name tn2 on tn1.scientific_name = tn2.scientific_name
+	join ala_concepts ac2 on tn2.lsid = ac2.name_lsid
+	join ala_classification cl on ac1.lsid = cl.lsid
+	where ac1.rank_id >=7000 and ac1.lsid <> ac2.lsid ;
+
 	
