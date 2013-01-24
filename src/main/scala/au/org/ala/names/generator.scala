@@ -13,6 +13,8 @@ object NamesGenerator {
   val relDAO = new RelationshipJDBCDAO
   val classDAO = new AlaClassificationJDBCDAO
   val colTcDAO = new ColConceptsJDBCDAO
+  val extraDAO = new ExtraNamesJDBCDAO
+  val colDAO = new ColConceptsJDBCDAO
   val db = new BoneCPDatabase
   //indicates that the init threads should stop
   var stopInit = false
@@ -28,6 +30,8 @@ object NamesGenerator {
     var lftRgtNSL = false
     var initNames =false
     var addApni=false
+    var padCaab=false
+    var padCol=false
     var createClass=false
     var shouldAddMissingKingdoms = false
     var cleanOldDumps = false
@@ -35,6 +39,8 @@ object NamesGenerator {
             opt("nsl","Preprocesses the NSL records so to determine classification depths",{lftRgtNSL=true})
             opt("init","Initialise the NSL taxon names to be used in ALA",{initNames = true})
             opt("apni","Initialise the APNI taxon names to be used in ALA",{addApni = true})
+            opt("caab","Pads out AFD data with missing CAAB species",{padCaab=true})
+            opt("col","Pads out AFD data with missing CoL species that have at least one occurrence in Australia",{padCol = true})
             opt("kingdoms","Adds missing CoL kingdoms ot the ALA names",{shouldAddMissingKingdoms = true})
             opt("class","Generate the final classification",{createClass = true})
             opt("all","Perform all phases in the correct order",{all = true})
@@ -55,6 +61,12 @@ object NamesGenerator {
               stopInit = false
               initialiseApniConcepts()
             }
+            if(all || most || padCaab){
+              padAFDCaab()
+            }
+            if(all || most || padCol){
+              padAFDCol()
+            }
             if(all || most || shouldAddMissingKingdoms)
               addMissingColKingdoms()
             if(all || most || createClass)
@@ -66,6 +78,161 @@ object NamesGenerator {
         else
           parser.showUsage
         println("Ending " + new java.util.Date)
+  }
+  
+  def padAFDCol(){
+          
+   
+    val genusMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    var famMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    var classMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    scala.io.Source.fromURL(getClass.getResource("/animals_col_biocache.txt")).getLines.foreach{ line =>
+      val values = line.split(",");
+
+      //get the col concept
+      val colConcept = colDAO.getSimilarConcept(values(1),"Animalia")
+      if(colConcept.isDefined){
+        val gse = getSoundEx(colConcept.get.genusName.get, false)
+        val sse = getSoundEx(colConcept.get.speciesName.get, true)
+        val source = Some("CoL")
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, None,"AFD") else List()
+
+        if(list.size>0 || alaDAO.isNameSynonyms(values(1)) || alaDAO.isNameAccepeted(values(1))){
+          //do nothing
+        } else{
+          //now we need to add a CoL concept
+          //println("Need to add " + line)
+          var parent = genusMap.get(colConcept.get.genusName.get)
+          if(parent.isEmpty){
+            val ac =alaDAO.getConceptBasedOnNameAndCode(colConcept.get.genusName.get, "Zoological")
+            if(ac.isEmpty){
+              //println("Missing genus : " +colConcept.get.genusName.get)
+              
+              var famParent = famMap.get(colConcept.get.familyName.get)
+              if(famParent.isEmpty){
+                val fam = alaDAO.getConceptBasedOnNameAndCode(colConcept.get.familyName.get, "Zoological")
+                if(fam.isEmpty){
+                  //println("Missing family : " + colConcept.get.familyName.get)
+                  //get the class
+                  var classParent = classMap.get(colConcept.get.className.get)
+                  if(classParent.isEmpty){
+                    val classConcept = alaDAO.getConceptBasedOnNameAndCode(colConcept.get.className.get, "Zoological")
+                    if(classConcept.isEmpty){
+                      parent =Some(None)
+                      classMap.put(colConcept.get.className.get, None)
+                      println("Missing Class: " + colConcept.get.className.get)
+                    }
+                    else{
+                      classMap.put(colConcept.get.className.get, Some(classConcept.get.lsid))
+                      classParent = Some(Some(classConcept.get.lsid))
+                    }
+                      //println("Missing Class: " + colConcept.get.className.get)
+                  }
+                  //add the missing family
+                  val famCon = colDAO.getConcept(colConcept.get.familyId.get)
+                  if(famCon.isDefined){
+                    // add col fmail
+                    famParent=Some(Some(famCon.get.lsid));
+                    famMap.put(famCon.get.familyName.get, Some(famCon.get.lsid))
+                    val alaConcept = new AlaConceptsDTO(None, famCon.get.lsid, Some(famCon.get.lsid), if(classParent.isDefined)classParent.get else None, Some(400), Some(400), None, Some(5000), None, None, None, None, source)
+                    alaDAO.insertNewTerm(alaConcept)
+                  }
+                  else
+                    famParent =Some(None)
+                }
+                else{
+                  famParent = Some(Some(fam.get.lsid))
+                  famMap.put(colConcept.get.familyName.get,Some(fam.get.lsid))
+                }
+              }
+              //add the missing genus
+              //get the col genus by id
+              val genCon = colDAO.getConcept(colConcept.get.genusId.get)
+              if(genCon.isDefined){
+                //add the col genus
+                genusMap.put(genCon.get.genusName.get,Some(genCon.get.lsid))
+                val alaConcept = new AlaConceptsDTO(None, genCon.get.lsid, Some(genCon.get.lsid), famParent.get, Some(400), Some(400), None, Some(6000), None, gse, None, None, source)
+                alaDAO.insertNewTerm(alaConcept)
+                parent = Some(Some(genCon.get.lsid))
+                //println(genusMap)
+              }
+            }
+            else{
+              parent = Some(Some(ac.get.lsid))
+              genusMap.put(colConcept.get.genusName.get, parent.get)
+            }
+          }
+          //NOW add the missing Col species
+          val alaConcept = new AlaConceptsDTO(None, colConcept.get.lsid, Some(colConcept.get.lsid), parent.get, Some(400), Some(400), None, Some(7000), None, gse, sse, None, source)      
+          alaDAO.insertNewTerm(alaConcept)
+        }
+      }
+    }
+  }
+  
+  /**
+   * Inserts the CAAB species that are missing from AFD
+   */
+  def padAFDCaab(){
+    extraDAO.truncate()    
+    var process = false
+    val genusMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    var famMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    //According to Tony Rees' email dated 2013-01-24 these are the correct mappings for the AFD missing families 
+    famMap.put("Tetrabrachiidae", Some("urn:lsid:biodiversity.org.au:afd.taxon:bbcc4ea1-7641-47de-9f61-8d8810149216"))
+    famMap.put("Pteroidae", Some("urn:lsid:biodiversity.org.au:afd.taxon:a4c50e6d-3d8b-4020-89d4-09018af2cb22"))
+    famMap.put("Odacidae", Some("urn:lsid:biodiversity.org.au:afd.taxon:8c04dbc2-fb26-4128-9e3a-ae416357097c"))
+    scala.io.Source.fromURL(getClass.getResource("/caab_names.csv")).getLines.foreach{ line =>
+      if(process){
+        val values = line.split("\t")
+        val gse = getSoundEx(values(5), false)
+        val sse = getSoundEx(values(6), true)
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, None,"AFD") else List()
+
+        if(list.size>0 || alaDAO.isNameSynonyms(values(1)) || alaDAO.isNameAccepeted(values(1))){
+          //do nothing
+        } else{
+          //println("NOT FOUND: " + line)
+          //need to add the missing CAAB species
+          val source = Some("CAAB")
+          //get the parent for the CAAB concept
+          var parent = genusMap.get(values(5))
+          if(parent.isEmpty){
+            val ac =alaDAO.getConceptBasedOnNameAndCode(values(5), "Zoological")
+            if(ac.isEmpty){
+              //println("Unable to locate " + values(5))
+              genusMap.put(values(5),Some("CAAB_"+values(5)))
+              extraDAO.insertNewTerm(new ExtraNamesDTO("CAAB_"+values(5), values(5), "", values(3), values(4),values(5),""))
+              var famParent = famMap.get(values(4))
+              if(famParent.isEmpty){
+                val fam = alaDAO.getConceptBasedOnNameAndCode(values(4), "Zoological")
+                if(fam.isDefined){
+                  famParent = Some(Some(fam.get.lsid))
+                  famMap.put(values(4),fam.get.parentLsid)
+                }
+                else
+                  println("Unable to locate " + values(4))
+              }
+              //add the missing genus
+              val alaConcept = new AlaConceptsDTO(None, "CAAB_"+values(5), Some("CAAB_"+values(5)), famParent.get, Some(200), Some(200), None, Some(6000), None, gse, sse, None, source)
+              alaDAO.insertNewTerm(alaConcept)              
+              parent = Some(Some("CAAB_"+values(5)))
+            }
+            else{
+              parent = Some(Some(ac.get.lsid))
+              genusMap.put(values(5), ac.get.parentLsid);
+            }
+          }
+          //add the missing species
+          val alaConcept = new AlaConceptsDTO(None, values(0), Some(values(0)), parent.get, Some(200), Some(200), None, Some(7000), None, gse, sse, None, source)      
+          alaDAO.insertNewTerm(alaConcept)
+          extraDAO.insertNewTerm(new ExtraNamesDTO(values(0), values(1), values(2), values(3), values(4),values(5),values(6)))
+        }
+      } else
+        process =true
+    }
+    println(genusMap)
+    println(famMap)
   }
   
   def handleBlacklistedNames(){

@@ -27,6 +27,9 @@ trait TaxonNameDAO extends DAO {
   //def 
 }
 //USED
+
+case class ExtraNamesDTO(lsid:String,scientificName:String, authority:String, commonName:String, family:String,genus:String,specificEpithet:String)
+
 case class AlaConceptsDTO(id: Option[Int], lsid: String, nameLsid: Option[String], parentLsid: Option[String],
   parentSrc: Option[Int], src: Option[Int], acceptedLsid: Option[String], rankId: Option[Int], synonymType: Option[Int], genusSoundEx: Option[String], speciesSoundEx: Option[String], infraSoundEx: Option[String],
   source: Option[String])
@@ -66,6 +69,19 @@ case class DictionaryRelationshipDTO(id: Int, relationship: String, description:
 
 trait ScalaQuery {
 
+  val ExtraNames = new Table[ExtraNamesDTO]("extra_names"){
+    def lsid = column[String]("lsid")
+    def scientificName=column[String]("scientific_name")
+    def authority=column[String]("authority")
+    def commonName=column[String]("common_name")
+    def family=column[String]("family")
+    def genus = column[String]("genus")
+    def specificEpithet=column[String]("specific_epithet")
+    
+    def * = lsid ~ scientificName ~ authority ~ commonName ~ family ~ genus ~ specificEpithet <> (ExtraNamesDTO, ExtraNamesDTO.unapply _)
+  
+  }
+  
   val ColSynonyms = new Table[ColSynonymsDTO]("col_synonyms") {
     def id = column[Int]("id", O.PrimaryKey)
     def scientificName = column[String]("scientific_name")
@@ -244,6 +260,18 @@ trait ScalaQuery {
 
 }
 
+class ExtraNamesJDBCDAO extends ScalaQuery{
+  def insertNewTerm(extraName: ExtraNamesDTO) {
+      
+    ExtraNames.*.insert(extraName)
+
+  }
+  
+    def truncate() {
+    updateNA("truncate table extra_names").first
+  }
+}
+
 class ColSynonymsJDBCDAO extends ScalaQuery {
   val synonymsQuery = for {
     id <- Parameters[Int]
@@ -386,8 +414,8 @@ class ColConceptsJDBCDAO extends ScalaQuery {
   } yield col
 
   val similarQuery = for {
-    scientificName <- Parameters[String]
-    col <- ColConcepts if col.scientificName === scientificName
+    Projection(scientificName,kingdom) <- Parameters[String,String]
+    col <- ColConcepts if col.scientificName === scientificName && col.kingdomName === kingdom 
   } yield col
 
   // query to get the genus of a sopecific name with a specfic parent
@@ -422,9 +450,9 @@ class ColConceptsJDBCDAO extends ScalaQuery {
     genFamQuery.firstOption(family, name)
   }
 
-  def getSimilarConcept(scientificName: String): Option[ColConceptsDTO] = {
+  def getSimilarConcept(scientificName: String, kingdom:String): Option[ColConceptsDTO] = {
 
-    val results = similarQuery.list(scientificName)
+    val results = similarQuery.list(scientificName, kingdom)
     if (results.size == 1)
       Some(results.head)
     else
@@ -491,6 +519,7 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
     tn <- TaxonName if tn.lsid === lsid
   } yield tn
 
+    
   //query to get a taxon name only if it has been included in the ala-concepts
   val nameInConceptsQuery = for {
     Projection(genusName, nomen) <- Parameters[String, String]
@@ -853,7 +882,17 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
   def getUnknownUnplacedConcepts():List[AlaConceptsDTO] ={
     blacklistedQuery.list
   }
+  
+  val nameInConceptsQuery = for {
+    Projection(genusName, nomen) <- Parameters[String, String]
+    tn <- TaxonName if tn.scientificName === genusName && tn.nomenCode === nomen
+    ac <- AlaConcepts if ac.nameLsid === tn.lsid
+  } yield ac
     
+  def getConceptBasedOnNameAndCode(genusName:String, nomen:String):Option[AlaConceptsDTO]={
+    nameInConceptsQuery.firstOption(genusName, nomen)
+  }
+  
   //USED
   /**
    * Inserts a synonym with the supplied details into the database
@@ -961,6 +1000,16 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
     val res =query[String,Int](synonymQuery).first(lsid)
     res >0
   }
+  val nameSynonymQuery="""select count(*) from taxon_name tn join ala_synonyms s on tn.lsid = s.name_lsid where tn.scientific_name=?"""
+  def isNameSynonyms(sciName:String):Boolean ={
+    val res = query[String,Int](nameSynonymQuery).first(sciName)
+    res >0
+  }
+  val sciNameAcceptedQuery ="""select count(*) from taxon_name tn join ala_concepts ac on tn.lsid = ac.name_lsid where tn.scientific_name=?"""
+  def isNameAccepeted(sciName:String):Boolean ={
+    val res = query[String,Int](sciNameAcceptedQuery).first(sciName)
+    res>0
+  }
 
   def getNameBasedParent(lsid:String):Option[String]={
     getNameParentQuery.firstOption(lsid)
@@ -1066,7 +1115,7 @@ where c.family_lsid =?  and c.lsid <> c.family_lsid and ac.lsid is null and c.ns
 case c.rank when 'kingdom' then 1000 when 'phylum' then 2000 when 'class' then 3000 when 'order' then 4000 
 when 'family' then 5000 when 'genus' then 6000 when 'species' then 7000 
 when 'form' then 8020 when 'subspecies' then 8000 when 'variety' then 8010 else null end ,
-null,null,null,null,null,null,null,c.taxon_id,'COL'
+null,null,null,null,null,null,null,c.taxon_id,'COL',null
 from col_concepts c left join col_concepts p on c.parent_id = p.taxon_id where c.kingdom_name in ('Viruses','Chromista','Protozoa','Bacteria','Fungi')""").first
 
     //Now remove reference to Unassigned values

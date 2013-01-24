@@ -359,6 +359,16 @@
 	INSERT INTO taxon_rank values(9999,'unranked');
 	
 		
-		
+	-- create the table used to store the extra names added from caab
+	create table extra_names(
+		lsid varchar(100),
+		scientific_name varchar(255),
+		authority varchar(200),
+		common_name varchar(200),
+		family varchar(100),
+		genus varchar(50),
+		specific_epithet varchar(100),
+		primary key(lsid)
+	);		
 	
 	

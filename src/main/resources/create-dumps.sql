@@ -3,7 +3,11 @@
 	
 	update ala_concepts ac1 join ala_concepts ac2 on ac1.parent_lsid = ac2.lsid  set ac1.parent_id = ac2.id;
 	
-	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id;
+	update ala_classification cl join extra_names en on cl.glsid=en.lsid set cl.gname = en.scientific_name;
+	
+	update ala_classification cl join extra_names en on cl.slsid = en.lsid set cl.sname = en.scientific_name;
+	
+	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id, cl.excluded=ac.excluded;
 	
 
 -- DUMP the ALA accepted concepts
@@ -11,14 +15,14 @@
 -- Query OK, 224482 rows affected (26 min 29.99 sec)
     select 'id','parent_id','lsid','parent_lsid','accepted_lsid','name_lsid','scientific_name','genus_or_higher','specific_epithet','infraspecific_epithet',
 	'authorship','author_year','rank_id', 'rank','lft','rgt','kingdom_lsid','kingdom_name','phylum_lsid', 'phylum_name','class_lsid','class_name','order_lsid','order_name','family_lsid','family_name',
-	'genus_lsid','genus_name','species_lsid','species_name','source','parent_src','synonym_type_id','synonym_relationship','synonym_description','raw_rank'
+	'genus_lsid','genus_name','species_lsid','species_name','source','parent_src','synonym_type_id','synonym_relationship','synonym_description','raw_rank','is_excluded'
 	UNION
 	select distinct cl.id,IFNULL(cl.parent_id,''),cl.lsid,IFNULL(cl.parent_lsid,''),IFNULL(cl.accepted_lsid,''), IFNULL(cl.name_lsid,''), 
-	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8) when tc.scientific_name is not null && tc.scientific_name<>'' then convert(tc.scientific_name using utf8)  when cc.scientific_name is not null then convert(cc.scientific_name using utf8)  else ""end,
-	case when tn.lsid is not null and tn.genus<>'' then convert(tn.genus using utf8)  when tn.lsid is not null and tn.genus = '' then convert(tn.scientific_name using utf8) when cc.taxon_id is not null  and cc.genus_name is not null then convert(cc.genus_name using utf8) when cc.taxon_id is not null and cc.genus_name is null then convert(cc.scientific_name using utf8) else "" end,
-	case when tn.lsid is not null and tn.specific_epithet <>'' then convert(tn.specific_epithet using utf8) when cc.taxon_id is not null and cc.species_name then convert(cc.species_name using utf8) else "" end,
+	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8) when tc.scientific_name is not null && tc.scientific_name<>'' then convert(tc.scientific_name using utf8)  when cc.scientific_name is not null then convert(cc.scientific_name using utf8) when en.scientific_name is not null then convert(en.scientific_name using utf8)  else ""end,
+	case when tn.lsid is not null and tn.genus<>'' then convert(tn.genus using utf8)  when tn.lsid is not null and tn.genus = '' then convert(tn.scientific_name using utf8) when cc.taxon_id is not null  and cc.genus_name is not null then convert(cc.genus_name using utf8) when cc.taxon_id is not null and cc.genus_name is null then convert(cc.scientific_name using utf8) when en.genus is not null and en.genus<>"" then convert(en.genus using utf8) else "" end,
+	case when tn.lsid is not null and tn.specific_epithet <>'' then convert(tn.specific_epithet using utf8) when cc.taxon_id is not null and cc.species_name then convert(cc.species_name using utf8) when en.specific_epithet is not null and en.specific_epithet<>"" then convert(en.specific_epithet using utf8) else "" end,
 	case when tn.lsid is not null and tn.infraspecific_epithet<>'' then convert(tn.infraspecific_epithet using utf8) when cc.taxon_id is not null and cc.infraspecies_name is not null then convert(cc.infraspecies_name using utf8) else "" end,
-	case when tn.authorship is not null and cl.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and cl.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cc.author is not null then convert(cc.author using utf8) else "" end,
+	case when tn.authorship is not null and cl.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and cl.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cc.author is not null then convert(cc.author using utf8) when en.authority is not null and en.authority<>"" then convert(en.authority using utf8) else "" end,
 	case when tn.author_year is not null and cl.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then "" when tn.author_year is not null and tn.author_year <>'' and cl.lsid like 'urn:lsid:biodiversity.org.au:apni%' then tn.author_year else "" end,
 	IFNULL(cl.rank_id,''), IFNULL(cl.rank,''),IFNULL(cl.lft,''),IFNULL(cl.rgt,''), IFNULL(cl.klsid,''), 
 	IFNULL(cl.kname,''),IFNULL(cl.plsid,''),
@@ -32,12 +36,13 @@
 	case when tc.lsid like 'urn:lsid:biodiversity.org.au:afd%' then 'AFD' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted='Y' then 'APC' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted<>'Y' then 'APNI' else 'CoL'end,
 	'',
 	'', '', '',
-	IFNULL(tc.rank, IFNULL(tn.rank, IFNULL(cc.rank,'')))
+	IFNULL(tc.rank, IFNULL(tn.rank, IFNULL(cc.rank,''))),IFNULL(cl.excluded,'')
 	INTO OUTFILE '/data/bie-staging/ala-names/ala_accepted_concepts_dump.txt' FIELDS ENCLOSED BY '"'
 	from ala_classification cl 
 	left join taxon_name tn on cl.name_lsid = tn.lsid 
 	left join  col_concepts cc on cl.lsid = cc.lsid
-	left join taxon_concept tc on cl.lsid = tc.lsid	
+	left join taxon_concept tc on cl.lsid = tc.lsid
+	left join extra_names en on cl.lsid = en.lsid
 	where cl.lsid is not null and cl.lsid <>''; 
 	
 	
@@ -81,6 +86,9 @@
 	INTO outfile '/data/bie-staging/ala-names/AFD-common-names.csv'
 	from relationships r join taxon_name tn on r.to_lsid = tn.lsid
 	where relationship = 'has vernacular';
+	UNION
+	select lsid, '',common_name,lsid, '','Y' from extra_names 
+	where common_name is not null and common_name <>''
 	
 	-- DUMP the potential species homonyms
 
