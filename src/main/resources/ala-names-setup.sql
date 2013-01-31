@@ -1,6 +1,6 @@
 	-- create the database
-	CREATE IF NOT EXISTS DATABASE ala_names;
-  	DEFAULT CHARACTER SET utf8;
+	CREATE DATABASE IF NOT EXISTS ala_names
+  	DEFAULT CHARACTER SET utf8
  	DEFAULT COLLATE utf8_general_ci;
 
   	use ala_names;
@@ -110,7 +110,8 @@
 	(@ignore, to_lsid, from_lsid, relationship, asserted_by, description);
 
 	
-	-- drop table dictionary_relationship;
+	drop table if exists dictionary_relationship;
+	
 	create table dictionary_relationship(
 		id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
 		relationship varchar(255),
@@ -173,7 +174,7 @@
 	INSERT INTO dictionary_relationship (relationship,description,type) VALUES ('misapplied name','COL',null);
 	INSERT INTO dictionary_relationship (relationship,description,type) VALUES ('synonym','COL',null);
 	
-	
+	drop table if exists dictionary;
 	-- Create the dictionary 
 	create table dictionary(
 		id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -193,19 +194,7 @@
 	insert into dictionary(value,type) values ('Child', 'relationship');
 	
 	-- Load the relationships into the taxon_concept table
-	-- PARENT relationship
-	update taxon_concept tc, relationships r set tc.parent_lsid = r.to_lsid where r.relationship='is child taxon of' and r.from_lsid = tc.lsid;
-	-- first parent of a hybrid
-	
-	update taxon_concept tc, relationships r set tc.parent_lsid = r.to_lsid where r.relationship='is hybrid child of' and r.description='first hybrid parent' and r.from_lsid = tc.lsid;	
-	-- apply superseded flag to "accepted" taxon concepts so that they do not get included as ala concepts.
-	update taxon_concept tc, relationships r set tc.is_superseded='T' where r.relationship='superseded by' and tc.lsid = r.from_lsid and tc.is_accepted='Y'
-	-- apply the excluded flag to concepts that are accpeted but excluded...
-	update taxon_concept tc, relationships r set tc.is_excluded='T' where r.relationship='excludes' and tc.name_lsid = r.to_lsid and tc.is_accepted='Y'
-	--update the not_taxon_tree flag so that we can indicate which taxon_names are marked as accepted in the taxon csv BUT are only synonyms in the tree
-	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept='T' where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid <>''
-	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept=null where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid =''
-	
+		
 	-- ALA clasification generation tables
 	create table ala_concepts(
 		id int NOT NULL AUTO_INCREMENT primary key,
@@ -280,6 +269,8 @@
 		rgt int,
 		id int,
 		parent_id int,
+		excluded char(1),
+		col_id int,
 		primary key (lsid),
 		index ix_ala_cl_rank_id(rank_id),
 		index ix_ala_cl_accepted(accepted_lsid),
@@ -289,6 +280,8 @@
 		index idx_cl_rgt(rgt)
 	);
 	
+	DROP TABLE IF EXISTS extra_identifiers;
+	
 	-- This table is used to store the extra identifiers to associate with an ala_concept
 	-- specifically it stores the mappings when there is duplicate taxonNames in the NSL
 	create table extra_identifiers(
@@ -297,6 +290,8 @@
 	);
 	
 	-- taxon ranks table
+	
+	drop table if exists taxon_rank;
 	
 	create table taxon_rank(
 	id int,
@@ -370,5 +365,68 @@
 		specific_epithet varchar(100),
 		primary key(lsid)
 	);		
+	
+	-- NOW the tables for the tree files
+	   DROP TABLE IF EXISTS nsl_taxon_concept;
+	
+	create table nsl_taxon_concept
+	(
+	   rank_code varchar(20),
+	   rank varchar(100),
+	   synonym varchar(50),
+	   name varchar(200),
+	   authority varchar(200),
+	   full_name varchar(500),
+	   name_lsid varchar(255),
+	   taxon_lsid varchar(255),
+	   parent_lsid varchar(255),
+	   synonym_of_lsid varchar(255),
+	   name_uri varchar(255),
+	   taxon_uri varchar(255),
+	   parent_taxon_uri varchar(255),
+	   synonym_of_uri varchar(255),
+	   file_source varchar(255),
+	   cc_license varchar(300),
+	   cc_attributionURL varchar(300),
+	   excluded varchar(255),
+	   source varchar(5),
+	   apc_concept_lsid varchar(255),
+	   synonym_same_name char(1),
+	   status int,
+	   child_count int,
+	   synonym_count int,
+	   index idx_name_tree(name_lsid),
+	   index idx_taxon_tree(taxon_lsid),
+	   index idx_accepted_tree(synonym_of_lsid),
+	   index idx_source_tree(source),
+	   index idx_tree_parent(parent_lsid)
+	);
+	
+	load data infile '/data/bie-staging/anbg/AFD_TREE.csv'
+    IGNORE INTO table nsl_taxon_concept FIELDS TERMINATED BY ',' ENCLOSED BY '\'' IGNORE 1 LINES
+    SET source='AFD';
+	
+	load data infile '/data/bie-staging/anbg/APC_TREE.csv' 
+	IGNORE INTO table nsl_taxon_concept FIELDS TERMINATED BY ',' ENCLOSED BY '\'' IGNORE 1 LINES
+	SET source='APC';
+	
+	load data infile '/data/bie-staging/anbg/APNI_TREE.csv' 
+	IGNORE INTO table nsl_taxon_concept FIELDS TERMINATED BY ',' ENCLOSED BY '\'' IGNORE 1 LINES
+	SET source='APNI';
+
+	
+	-- PARENT relationship
+	update taxon_concept tc, relationships r set tc.parent_lsid = r.to_lsid where r.relationship='is child taxon of' and r.from_lsid = tc.lsid;
+	-- first parent of a hybrid
+	
+	update taxon_concept tc, relationships r set tc.parent_lsid = r.to_lsid where r.relationship='is hybrid child of' and r.description='first hybrid parent' and r.from_lsid = tc.lsid;	
+	-- apply superseded flag to "accepted" taxon concepts so that they do not get included as ala concepts.
+	update taxon_concept tc, relationships r set tc.is_superseded='T' where r.relationship='superseded by' and tc.lsid = r.from_lsid and tc.is_accepted='Y'
+	-- apply the excluded flag to concepts that are accpeted but excluded...
+	update taxon_concept tc, relationships r set tc.is_excluded='T' where r.relationship='excludes' and tc.name_lsid = r.to_lsid and tc.is_accepted='Y'
+	--update the not_taxon_tree flag so that we can indicate which taxon_names are marked as accepted in the taxon csv BUT are only synonyms in the tree
+	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept='T' where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid <>''
+	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept=null where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid =''
+
 	
 	

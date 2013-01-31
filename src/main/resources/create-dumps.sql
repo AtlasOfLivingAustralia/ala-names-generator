@@ -7,7 +7,7 @@
 	
 	update ala_classification cl join extra_names en on cl.slsid = en.lsid set cl.sname = en.scientific_name;
 	
-	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id, cl.excluded=ac.excluded;
+	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id, cl.excluded=ac.excluded, cl.col_id = ac.col_id;
 	
 
 -- DUMP the ALA accepted concepts
@@ -15,7 +15,7 @@
 -- Query OK, 224482 rows affected (26 min 29.99 sec)
     select 'id','parent_id','lsid','parent_lsid','accepted_lsid','name_lsid','scientific_name','genus_or_higher','specific_epithet','infraspecific_epithet',
 	'authorship','author_year','rank_id', 'rank','lft','rgt','kingdom_lsid','kingdom_name','phylum_lsid', 'phylum_name','class_lsid','class_name','order_lsid','order_name','family_lsid','family_name',
-	'genus_lsid','genus_name','species_lsid','species_name','source','parent_src','synonym_type_id','synonym_relationship','synonym_description','raw_rank','is_excluded'
+	'genus_lsid','genus_name','species_lsid','species_name','source','parent_src','synonym_type_id','synonym_relationship','synonym_description','raw_rank','is_excluded','col_id'
 	UNION
 	select distinct cl.id,IFNULL(cl.parent_id,''),cl.lsid,IFNULL(cl.parent_lsid,''),IFNULL(cl.accepted_lsid,''), IFNULL(cl.name_lsid,''), 
 	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8) when tc.scientific_name is not null && tc.scientific_name<>'' then convert(tc.scientific_name using utf8)  when cc.scientific_name is not null then convert(cc.scientific_name using utf8) when en.scientific_name is not null then convert(en.scientific_name using utf8)  else ""end,
@@ -36,7 +36,7 @@
 	case when tc.lsid like 'urn:lsid:biodiversity.org.au:afd%' then 'AFD' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted='Y' then 'APC' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted<>'Y' then 'APNI' else 'CoL'end,
 	'',
 	'', '', '',
-	IFNULL(tc.rank, IFNULL(tn.rank, IFNULL(cc.rank,''))),IFNULL(cl.excluded,'')
+	IFNULL(tc.rank, IFNULL(tn.rank, IFNULL(cc.rank,''))),IFNULL(cl.excluded,''),IFNULL(cl.col_id,'')
 	INTO OUTFILE '/data/bie-staging/ala-names/ala_accepted_concepts_dump.txt' FIELDS ENCLOSED BY '"'
 	from ala_classification cl 
 	left join taxon_name tn on cl.name_lsid = tn.lsid 
@@ -55,16 +55,18 @@
 	
 
 	
-	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'col_id', 'syn_type'
+	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'col_id', 'syn_type', 'relatinoship', 'description'
 	UNION
 	select alas.id + (select max(id) from ala_concepts), alas.lsid,alas.name_lsid, alas.accepted_lsid, alas.accepted_id,
 	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8)  when cols.scientific_name is not null then convert(cols.scientific_name using utf8)  else ""end, 
 	case when tn.authorship is not null and alas.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and alas.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cols.author is not null then convert(cols.author using utf8) else "" end, 
-	alas.col_id, alas.syn_type
+	IFNULL(alas.col_id,''), alas.syn_type, IFNULL(dr.relationship,''), IFNULL(dr.description, '')
 	INTO OUTFILE '/data/bie-staging/ala-names/ala_synonyms_dump.txt' FIELDS ENCLOSED BY '"'
 	FROM ala_synonyms alas
 	LEFT JOIN taxon_name tn on alas.name_lsid = tn.lsid
-	LEFT JOIN col_synonyms cols on alas.col_id = cols.id;
+	LEFT JOIN col_synonyms cols on alas.col_id = cols.id
+	LEFT JOIN dictionary_relationship dr on alas.syn_type = dr.id;
+	
 	
 	
 -- DUMP the identifiers
@@ -82,13 +84,14 @@
 -- DUMP the common names
 	select 'LSID', 'URI', 'Name','TaxonConcept', 'PublicationLSID','isPreferredName'
 	UNION
-	select r.to_lsid, '',tn.scientific_name, r.from_lsid,'',''
-	INTO outfile '/data/bie-staging/ala-names/AFD-common-names.csv'
+	select r.to_lsid, '',tn.scientific_name, r.from_lsid,'',''	
 	from relationships r join taxon_name tn on r.to_lsid = tn.lsid
-	where relationship = 'has vernacular';
+	where relationship = 'has vernacular'
 	UNION
-	select lsid, '',common_name,lsid, '','Y' from extra_names 
-	where common_name is not null and common_name <>''
+	select lsid, '',common_name,lsid, '','Y'
+	INTO outfile '/data/bie-staging/ala-names/AFD-common-names.csv'
+	from extra_names
+	where common_name is not null and common_name <>'';
 	
 	-- DUMP the potential species homonyms
 

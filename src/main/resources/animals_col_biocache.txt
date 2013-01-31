@@ -5078,3 +5078,30 @@ urn:lsid:catalogueoflife.org:taxon:f410fe86-29c1-102b-9a4a-00304854f820:col20110
 urn:lsid:catalogueoflife.org:taxon:f4110b42-29c1-102b-9a4a-00304854f820:col20110201,Ozarchaea waldockae
 urn:lsid:catalogueoflife.org:taxon:f415df00-29c1-102b-9a4a-00304854f820:col20110201,Masasteron ocellum
 urn:lsid:catalogueoflife.org:taxon:f415ed92-29c1-102b-9a4a-00304854f820:col20110201,Platylampona mazeppa
+,Thalassarche impavida
+,Thalassarche salvini
+,Thalassarche steadi
+,Diomedea antipodensis
+,Ardea alba
+,Chlamydera maculata
+,Philemon buceroides novaeguineae
+,Ducula spilorrhoa
+,Xanthomyza phrygia
+,Esacus giganteus
+,Gallinula mortierii
+,Stercorarius lonnbergi
+,Stigmatopelia chinensis
+,Stigmatopelia senegalensis
+,Chlamydera nuchalis
+,Collocalia spodiopygia
+,Mesophoyx intermedia
+,Phylidonyris melanops
+,Aplonis metallica
+,Monarcha trivirgatus
+,Thalassarche eremita
+,Thalassarche carteri
+,Heteroscelus brevipes
+,Crocodylus johnsoni
+,Ornithoptera priamus
+,Gymnorhina tibicen leuconata
+,Ardea alba
