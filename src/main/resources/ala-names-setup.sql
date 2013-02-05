@@ -271,6 +271,7 @@
 		parent_id int,
 		excluded char(1),
 		col_id int,
+		source varchar(4),
 		primary key (lsid),
 		index ix_ala_cl_rank_id(rank_id),
 		index ix_ala_cl_accepted(accepted_lsid),

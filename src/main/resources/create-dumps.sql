@@ -3,11 +3,24 @@
 	
 	update ala_concepts ac1 join ala_concepts ac2 on ac1.parent_lsid = ac2.lsid  set ac1.parent_id = ac2.id;
 	
+	
+	update ala_concepts 
+	set source = 'AFD' 
+	where source is null and lsid like '%au:afd%';
+	
+	update ala_concepts ac join taxon_concept tc on ac.lsid = tc.lsid
+	set source = 'APNI'
+	where source is null and tc.lsid like '%au:apni%' and tc.is_accepted='';
+	
+	update ala_concepts ac join taxon_concept tc on ac.lsid = tc.lsid
+	set source = 'APC'
+	where source is null and tc.lsid like '%au:apni%' and tc.is_accepted='Y'
+	
 	update ala_classification cl join extra_names en on cl.glsid=en.lsid set cl.gname = en.scientific_name;
 	
 	update ala_classification cl join extra_names en on cl.slsid = en.lsid set cl.sname = en.scientific_name;
 	
-	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id, cl.excluded=ac.excluded, cl.col_id = ac.col_id;
+	update ala_classification cl join ala_concepts ac on cl.lsid = ac.lsid set cl.parent_id = ac.parent_id, cl.id = ac.id, cl.excluded=ac.excluded, cl.col_id = ac.col_id, cl.source = ac.source;
 	
 
 -- DUMP the ALA accepted concepts
@@ -33,7 +46,7 @@
 	IFNULL(cl.flsid,''),IFNULL(cl.fname,''),
 	IFNULL(cl.glsid,''),IFNULL(convert(cl.gname using utf8),''),
 	IFNULL(cl.slsid,''),IFNULL(convert(cl.sname using utf8),''), 
-	case when tc.lsid like 'urn:lsid:biodiversity.org.au:afd%' then 'AFD' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted='Y' then 'APC' when tc.lsid like 'urn:lsid:biodiversity.org.au:apni%' and tc.is_accepted<>'Y' then 'APNI' else 'CoL'end,
+	IFNULL(cl.source, ''),
 	'',
 	'', '', '',
 	IFNULL(tc.rank, IFNULL(tn.rank, IFNULL(cc.rank,''))),IFNULL(cl.excluded,''),IFNULL(cl.col_id,'')
@@ -55,17 +68,19 @@
 	
 
 	
-	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'col_id', 'syn_type', 'relatinoship', 'description'
+	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'year', 'col_id', 'syn_type', 'relatinoship', 'description'
 	UNION
 	select alas.id + (select max(id) from ala_concepts), alas.lsid,alas.name_lsid, alas.accepted_lsid, alas.accepted_id,
 	case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8)  when cols.scientific_name is not null then convert(cols.scientific_name using utf8)  else ""end, 
-	case when tn.authorship is not null and alas.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and alas.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cols.author is not null then convert(cols.author using utf8) else "" end, 
+	case when tn.authorship is not null and alas.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and alas.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when cols.author is not null then convert(cols.author using utf8) else "" end,
+	case when tn.author_year is not null then convert(tn.author_year using utf8) else "" end,
 	IFNULL(alas.col_id,''), alas.syn_type, IFNULL(dr.relationship,''), IFNULL(dr.description, '')
 	INTO OUTFILE '/data/bie-staging/ala-names/ala_synonyms_dump.txt' FIELDS ENCLOSED BY '"'
 	FROM ala_synonyms alas
 	LEFT JOIN taxon_name tn on alas.name_lsid = tn.lsid
 	LEFT JOIN col_synonyms cols on alas.col_id = cols.id
-	LEFT JOIN dictionary_relationship dr on alas.syn_type = dr.id;
+	LEFT JOIN dictionary_relationship dr on alas.syn_type = dr.id
+	group by alas.lsid, alas.accepted_lsid;
 	
 	
 	
