@@ -85,6 +85,7 @@ object NamesGenerator {
    
     val genusMap = new scala.collection.mutable.HashMap[String, Option[String]]
     var famMap = new scala.collection.mutable.HashMap[String, Option[String]]
+    var orderMap = new scala.collection.mutable.HashMap[String, Option[String]]
     var classMap = new scala.collection.mutable.HashMap[String, Option[String]]
     scala.io.Source.fromURL(getClass.getResource("/animals_col_biocache.txt")).getLines.foreach{ line =>
       val values = line.split(",");
@@ -113,18 +114,40 @@ object NamesGenerator {
                 val fam = alaDAO.getConceptBasedOnNameAndCode(colConcept.get.familyName.get, "Zoological")
                 if(fam.isEmpty){
                   //println("Missing family : " + colConcept.get.familyName.get)
-                  //get the class
-                  var classParent = classMap.get(colConcept.get.className.get)
-                  if(classParent.isEmpty){
-                    val classConcept = alaDAO.getConceptBasedOnNameAndCode(colConcept.get.className.get, "Zoological")
-                    if(classConcept.isEmpty){
-                      parent =Some(None)
-                      classMap.put(colConcept.get.className.get, None)
-                      println("Missing Class: " + colConcept.get.className.get)
+                  //get the order
+                  var orderParent = orderMap.get(colConcept.get.orderName.get)
+                  if(orderParent.isEmpty){
+                    val orderConcept = alaDAO.getConceptBasedOnNameAndCode(colConcept.get.orderName.get, "Zoological")
+                    if(orderConcept.isEmpty){
+                      //get the class if we have already located it
+                      var classParent = classMap.get(colConcept.get.className.get)
+                      if(classParent.isEmpty){
+                        //attempt to locate it in AFD
+                        var classConcept =  alaDAO.getConceptBasedOnNameAndCode(colConcept.get.className.get, "Zoological")
+                        if(classConcept.isEmpty){
+                          parent = Some(None)
+                          classMap.put(colConcept.get.className.get,None)
+                          println("Missing Class: " +colConcept.get.className.get)
+                        }
+                        else{
+                          //it needs to be added to the map
+                          classMap.put(colConcept.get.className.get, Some(classConcept.get.lsid))
+                          classParent = Some(Some(classConcept.get.lsid))
+                        } 
+                      }
+                      //create the order 
+                      val orderColConcept = colDAO.getConcept(colConcept.get.orderId.get)
+                      if(orderColConcept.isDefined){
+                        orderParent = Some(Some(orderColConcept.get.lsid))
+                        orderMap.put(colConcept.get.orderName.get, orderParent.get)
+                        //now insert the order
+                        val alaConcept = new AlaConceptsDTO(None, orderColConcept.get.lsid, Some(orderColConcept.get.lsid), if(classParent.isDefined)classParent.get else None, Some(400), Some(400), None, Some(4000), None, None, None, None, source)
+                        alaDAO.insertNewTerm(alaConcept)
+                      }
                     }
                     else{
-                      classMap.put(colConcept.get.className.get, Some(classConcept.get.lsid))
-                      classParent = Some(Some(classConcept.get.lsid))
+                      orderMap.put(colConcept.get.orderName.get, Some(orderConcept.get.lsid))
+                      orderParent = Some(Some(orderConcept.get.lsid))
                     }
                       //println("Missing Class: " + colConcept.get.className.get)
                   }
@@ -134,7 +157,7 @@ object NamesGenerator {
                     // add col fmail
                     famParent=Some(Some(famCon.get.lsid));
                     famMap.put(famCon.get.familyName.get, Some(famCon.get.lsid))
-                    val alaConcept = new AlaConceptsDTO(None, famCon.get.lsid, Some(famCon.get.lsid), if(classParent.isDefined)classParent.get else None, Some(400), Some(400), None, Some(5000), None, None, None, None, source)
+                    val alaConcept = new AlaConceptsDTO(None, famCon.get.lsid, Some(famCon.get.lsid), if(orderParent.isDefined)orderParent.get else None, Some(400), Some(400), None, Some(5000), None, None, None, None, source)
                     alaDAO.insertNewTerm(alaConcept)
                   }
                   else
