@@ -92,9 +92,9 @@
 	from ala_concepts ac join taxon_concept tc on ac.name_lsid = tc.name_lsid
 	where ac.lsid <> tc.lsid
 	UNION
-	select asyn.name_lsid, tc.name_lsid, asyn.name_lsid
+	select asyn.name_lsid, asyn.lsid ,tc.lsid
 	INTO OUTFILE '/data/bie-staging/ala-names/identifiers.txt' FIELDS ENCLOSED BY '"'
-	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid;
+	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid where asyn.lsid <> tc.lsid;
 	
 -- DUMP the common names
 	select 'LSID', 'URI', 'Name','TaxonConcept', 'PublicationLSID','isPreferredName'
