@@ -231,7 +231,7 @@ object NamesGenerator {
                 val fam = alaDAO.getConceptBasedOnNameAndCode(values(4), "Zoological")
                 if(fam.isDefined){
                   famParent = Some(Some(fam.get.lsid))
-                  famMap.put(values(4),fam.get.parentLsid)
+                  famMap.put(values(4),Some(fam.get.lsid))
                 }
                 else
                   println("Unable to locate " + values(4))
@@ -243,7 +243,7 @@ object NamesGenerator {
             }
             else{
               parent = Some(Some(ac.get.lsid))
-              genusMap.put(values(5), ac.get.parentLsid);
+              genusMap.put(values(5), Some(ac.get.lsid));
             }
           }
           //add the missing species
