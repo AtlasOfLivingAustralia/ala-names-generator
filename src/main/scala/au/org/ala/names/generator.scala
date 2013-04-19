@@ -8,10 +8,12 @@ import au.org.ala.util.OptionParser
 
 object NamesGenerator {
   val alaDAO = new AlaConceptsJDBCDAO
+  val mergeDAO = new MergeAlaConceptsJBBCDAO
   val tcDAO = new TaxonConceptJDBCDAO
   val tnDAO = new TaxonNameJDBCDAO
   val relDAO = new RelationshipJDBCDAO
   val classDAO = new AlaClassificationJDBCDAO
+  val mergeclassDAO = new MergeAlaClassificationJDBCDAO
   val colTcDAO = new ColConceptsJDBCDAO
   val extraDAO = new ExtraNamesJDBCDAO
   val colDAO = new ColConceptsJDBCDAO
@@ -35,6 +37,10 @@ object NamesGenerator {
     var createClass=false
     var shouldAddMissingKingdoms = false
     var cleanOldDumps = false
+    var colLftRgt = false
+    var tnSoundEx=false
+    var mergeTc=false
+    var mergeClass=false
     val parser = new OptionParser("ALA Name Generation Options") {
             opt("nsl","Preprocesses the NSL records so to determine classification depths",{lftRgtNSL=true})
             opt("init","Initialise the NSL taxon names to be used in ALA",{initNames = true})
@@ -46,11 +52,23 @@ object NamesGenerator {
             opt("all","Perform all phases in the correct order",{all = true})
             opt("most","Performs all the phases EXCEPT nsl",{most=true})
             opt("clean", "Rename the old dumps so that the mysql dumps will not fail", {cleanOldDumps=true})
+            opt("collft","Generates left rigth values for the Col table",{colLftRgt = true})
+            opt("tnexp","Generates the sounds like expressions for the taxon names",{tnSoundEx=true})
+            opt("merge","Merge the remaining COL concepts into the ALA concepts - allowing original to remain separate" , {mergeTc=true})
+            opt("mergecl","Create the merged classification" , {mergeClass=true})
         }
         println("Starting " + new java.util.Date)
         if(parser.parse(args)){
             
-          db withSession {            
+          db withSession {
+            if(mergeClass)
+              generateClassification(true, mergeclassDAO)
+            if(mergeTc)
+              generateMergedConcepts()
+            if(tnSoundEx)
+              generateTaxonNamesSoundExName()
+            if(colLftRgt)
+              generateLftRgtForCoL()
             if(all || lftRgtNSL)
               generateLftRgtDepthForNSL()
             if(all || most || initNames){
@@ -70,7 +88,7 @@ object NamesGenerator {
             if(all || most || shouldAddMissingKingdoms)
               addMissingColKingdoms()
             if(all || most || createClass)
-              generateClassification(true)
+              generateClassification(true, classDAO)
             if(all || most || cleanOldDumps)
               prepareForDump()
           }
@@ -79,7 +97,7 @@ object NamesGenerator {
           parser.showUsage
         println("Ending " + new java.util.Date)
   }
-  
+  //TODO FIX the COL padding this is not looking at CAAB before adding a species...
   def padAFDCol(){
           
    
@@ -301,6 +319,347 @@ object NamesGenerator {
       case e:Exception => e.printStackTrace()
     }
   }
+  /**
+   * Generates the sounds like expression for the names
+   */
+  def generateTaxonNamesSoundExName(){
+    
+    println("Starting to generate the sound expressions for the TaxonName table")      
+    var count = 0
+    val start = System.currentTimeMillis
+    var startTime = System.currentTimeMillis
+    var finishTime = System.currentTimeMillis
+
+    val queue = new ArrayBlockingQueue[TaxonNameDTO](500)
+    val arrayBuf = new ArrayBuffer[Thread]()
+    var i = 0
+    while (i < 25) {
+      val t = new Thread(new AlaInitThread(queue, i,{tn => {
+        val(genEx, spEx, inSpEx) = NamesGenerator.generateSoundExs(tn)
+        //minimally need a sounds ex for the genus before we update
+        if(genEx.isDefined)
+          tnDAO.updateSoundsLikeExpressions(tn.lsid, genEx, spEx, inSpEx)
+      }}))
+      t.start
+      arrayBuf += t
+      i += 1
+    }
+
+    tnDAO.iterateOver(tn => {
+
+      while (queue.size >= 490) {
+        Thread.sleep(50)
+      }
+      if(!blacklist.contains(tn.lsid))
+        queue.add(tn)
+      count += 1
+      if (count % 1000 == 0) {
+        finishTime = System.currentTimeMillis
+        println(count
+          + " >> Last key : " + tn.lsid
+          + ", records per sec: " + 1000f / (((finishTime - startTime).toFloat) / 1000f)
+          + ", time taken for " + 1000 + " records: " + (finishTime - startTime).toFloat / 1000f
+          + ", total time: " + (finishTime - start).toFloat / 60000f + " minutes")
+        startTime = System.currentTimeMillis
+      }
+
+      true
+    })
+
+    stopInit = true
+    arrayBuf.foreach(t => t.join)
+          
+  }
+  
+  def generateMergedConcepts(){    
+    println("Starting to generate merged ala concepts with CoL")
+    //Step one copy across all the concepts from the ala_concept table
+    //Step two extract all the CoL concepts, species level or lower, that are NOT already in the table
+    //Step three only add if it is not part of the same nomenclatural group with a sounds like expression that matches.
+    
+    var count = 0
+    val start = System.currentTimeMillis
+    var startTime = System.currentTimeMillis
+    var finishTime = System.currentTimeMillis
+
+    val queue = new ArrayBlockingQueue[ColConceptsDTO](500)
+    val arrayBuf = new ArrayBuffer[Thread]()
+    var i = 0
+    while (i < 25) {
+      val t = new Thread(new CoLMergeThread(queue, i))
+      t.start
+      arrayBuf += t
+      i += 1
+    }
+    
+    colDAO.getAnimalPlantFamiles().foreach{fam =>
+      while (queue.size >= 490) {
+        Thread.sleep(50)
+      }
+      queue.add(fam)
+      count += 1
+      if (count % 1000 == 0) {
+        finishTime = System.currentTimeMillis
+        println(count
+          + " >> Last key : " + fam.lsid
+          + ", records per sec: " + 1000f / (((finishTime - startTime).toFloat) / 1000f)
+          + ", time taken for " + 1000 + " records: " + (finishTime - startTime).toFloat / 1000f
+          + ", total time: " + (finishTime - start).toFloat / 60000f + " minutes")
+        startTime = System.currentTimeMillis
+      }
+    }
+    stopInit=true
+    arrayBuf.foreach(t => t.join)
+    mergeDAO.deleteDuplicates()
+  }
+  
+  def getNotNotAssignedParent(fam:ColConceptsDTO, nom:String):Option[String]={
+    var validParent=0 
+    if(fam.orderName.get != "Not assigned"){
+      validParent = fam.orderId.get
+    }
+    else if(fam.className.get != "Not assigned"){
+      validParent = fam.classId.get 
+    }
+    else if(fam.phylumName.get != "Not assigned")
+      validParent = fam.phylumId.get
+    else
+      validParent = fam.kingdomId.get
+      
+    //retrive the COL concept
+    val col = colDAO.getConcept(validParent)
+    if(col.isDefined){
+      CachedObjects.getLock("family").synchronized{
+        getColOrAlaConcept(col.get, nom)
+      }
+    }
+    else
+      None
+  }
+  def getColOrAlaConcept(col:ColConceptsDTO, nom:String):Option[String] ={
+    var id = CachedObjects.getLsidFromCache(col.rank, col.scientificName)
+    if(id.isEmpty){
+      //attempt to find the ala
+      val ala = alaDAO.getConceptBasedOnNameAndCode(col.scientificName, nom)
+      if(ala.isDefined){
+        CachedObjects.putLsidInCache(col.rank, col.scientificName, ala.get.lsid)
+        id = Some(ala.get.lsid)
+      }
+      else{
+        //need to add as col
+        val parent = colDAO.getConcept(col.parentId.get)        
+        val parentId = getColOrAlaConcept(parent.get, nom)
+        val rank = Ranks.matchTerm(col.rank, nom) 
+        val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+        val alaConcept = new AlaConceptsDTO(None, col.lsid, Some(col.lsid), parentId , Some(405), Some(405), None, rankId, None, None, None, None, Some("CoL"))
+        mergeDAO.insertNewTerm(alaConcept)
+        CachedObjects.putLsidInCache(col.rank,col.scientificName, parentId.get)
+        id = Some(col.lsid)
+      }
+    }
+    id
+  }
+  
+  def addMergedColFamilyConcepts(fam:ColConceptsDTO){
+    val start = System.currentTimeMillis
+    //STEP 1: Ensure that the higher level classification exists    
+    val source = Some("CoL")
+    //check to see if the family exist in ALA
+    val nom = if(fam.kingdomName.get == "Animalia") "Zoological" else "Botanical"
+    var famId = if(fam.scientificName == "Not assigned") getNotNotAssignedParent(fam, nom) else CachedObjects.getLsidFromCache("family", fam.scientificName)
+    if(famId.isEmpty){
+      //check to see if it is in the ALA
+      val alafam = alaDAO.getConceptBasedOnNameAndCode(fam.scientificName, nom)
+      if(alafam.isDefined){
+        CachedObjects.putLsidInCache("family", fam.scientificName, alafam.get.lsid)
+        famId = Some(alafam.get.lsid)
+      }
+      else{
+        //need to add the family to the 
+        CachedObjects.getLock("family").synchronized{
+          //now insert a new family
+          var ordId = CachedObjects.getLsidFromCache("order", fam.orderName.get)
+          if(ordId.isEmpty){            
+            val alaord = alaDAO.getConceptBasedOnNameAndCode(fam.orderName.get, nom)
+            if(alaord.isDefined){
+              CachedObjects.putLsidInCache("order", fam.orderName.get, alaord.get.lsid)
+              ordId = Some(alaord.get.lsid)
+            }
+            else{
+              //get the CoL order
+              val orderColConcept = colDAO.getConcept(fam.orderId.get)
+              if(orderColConcept.isDefined){
+                ordId = Some(orderColConcept.get.lsid)
+                //need to add an order
+                var classId = CachedObjects.getLsidFromCache("class", fam.className.get)
+                if(classId.isEmpty){
+                  //check to see if it is in ala
+                  val alaclass = alaDAO.getConceptBasedOnNameAndCode(fam.className.get, nom)
+                  if(alaclass.isDefined){
+                    CachedObjects.putLsidInCache("class", fam.className.get, alaclass.get.lsid)
+                    classId = Some(alaclass.get.lsid)
+                  }
+                  else{
+                    //needd to add a class
+                    //get the CoL class
+                    val classColConcept = colDAO.getConcept(fam.classId.get)
+                    if(classColConcept.isDefined){
+                      classId = Some(classColConcept.get.lsid)
+                      var phylumId = CachedObjects.getLsidFromCache("phylum", fam.phylumName.get)
+                      if(phylumId.isEmpty){
+                        //check to see if it is the ala
+                        val alaphylum = alaDAO.getConceptBasedOnNameAndCode(fam.phylumName.get, nom)
+                        if(alaphylum.isDefined){
+                          CachedObjects.putLsidInCache("phylum", fam.phylumName.get, alaphylum.get.lsid)
+                          phylumId = Some(alaphylum.get.lsid)
+                        }
+                        else{
+                          //need to add a new phylum
+                          //get the CoL phylum
+                          val phylumColConcept = colDAO.getConcept(fam.phylumId.get)
+                          if(phylumColConcept.isDefined){
+                            phylumId= Some(phylumColConcept.get.lsid)
+                            var kingdomId = CachedObjects.getLsidFromCache("kingdom", fam.kingdomName.get)
+                            if(kingdomId.isEmpty){
+                              val alakingdom = alaDAO.getConceptBasedOnNameAndCode(fam.kingdomName.get, nom)
+                              if(alakingdom.isDefined){
+                                CachedObjects.putLsidInCache("kingdom", fam.kingdomName.get, alakingdom.get.lsid)
+                                kingdomId = Some(alakingdom.get.lsid)
+                              }
+                            }
+                            //parent in kingdomId
+                            val alaConcept = new AlaConceptsDTO(None, phylumId.get, phylumId, kingdomId , Some(405), Some(405), None, Some(2000), None, None, None, None, source)
+                            mergeDAO.insertNewTerm(alaConcept)
+                            CachedObjects.putLsidInCache("phylum",fam.phylumName.get, phylumId.get)
+                          }
+                        }
+                      }
+                      //parent in phylumId
+                      val alaConcept = new AlaConceptsDTO(None, classId.get, classId, phylumId , Some(405), Some(405), None, Some(3000), None, None, None, None, source)
+                      mergeDAO.insertNewTerm(alaConcept)
+                      CachedObjects.putLsidInCache("class",fam.className.get, classId.get)
+                    }
+                  }
+                }
+                 //parent in classId
+                val alaConcept = new AlaConceptsDTO(None, ordId.get, ordId, classId , Some(405), Some(405), None, Some(4000), None, None, None, None, source)
+                mergeDAO.insertNewTerm(alaConcept)
+                CachedObjects.putLsidInCache("order",fam.orderName.get, ordId.get)
+              }
+            }
+          }
+          //parent in ordId
+          val alaConcept = new AlaConceptsDTO(None, fam.lsid, Some(fam.lsid), ordId , Some(405), Some(405), None, Some(5000), None, None, None, None, source)
+          mergeDAO.insertNewTerm(alaConcept)
+          CachedObjects.putLsidInCache("family",fam.scientificName, fam.lsid)
+          famId = Some(fam.lsid)
+        }
+      }
+    }
+    
+    
+    //STEP 2: Handle all the children that belong to the supplied family
+    var count=0
+    val species = colDAO.getSpeciesForFamily(fam.taxonId)
+    //println(species)
+    //store the current genus, species etc and then only need to update parent when they change
+    var currentGenus:String=null
+    var currentColGenus:Int=0
+    var currentSpeciesLsid:String=null
+    var currentSpeciesId=0
+    species.foreach{ sp=>
+      if(sp.genusId.isDefined){
+        if(sp.genusId.get != currentColGenus){
+          currentColGenus = sp.genusId.get
+          //see if the current genus exists in ALA
+          val alagenus = alaDAO.getConceptBasedOnNameAndCode(sp.genusName.get, nom)
+          if(alagenus.isDefined)
+            currentGenus = alagenus.get.lsid
+            else{
+              //add the col genus with the famId as a parent
+              val colGenus = colDAO.getConcept(currentColGenus)
+              currentGenus = colGenus.get.lsid              
+              val alaConcept = new AlaConceptsDTO(None,colGenus.get.lsid, Some(colGenus.get.lsid), famId , Some(405), Some(405), None, Some(6000), None, None, None, None, source)
+              mergeDAO.insertNewTerm(alaConcept)
+            }
+        }
+        //now handle the species
+        if(sp.rank == "species"){
+          //check to see if my sounds like ex is handled in NSL
+          val (genex, spex) =(getSoundEx(sp.genusName.get.trim, false), getSoundEx(sp.speciesName.get.trim, true))
+          val list = if(genex.isDefined && spex.isDefined) tnDAO.getMatchSoundExNomen(genex.get,spex.get,None,nom) else List()
+          if(list.size == 0){
+            //we need to add the species
+            currentSpeciesLsid = sp.lsid
+            currentSpeciesId = sp.taxonId
+            val alaConcept = new AlaConceptsDTO(None,currentSpeciesLsid, Some(currentSpeciesLsid), Some(currentGenus) , Some(405), Some(405), None, Some(7000), None, None, None, None, source)
+            try{
+              mergeDAO.insertNewTerm(alaConcept)
+              count+=1
+            }
+            catch{
+              case e:Exception => println("EXCEPTION: " + e.getMessage())
+            }
+            
+          }
+        }
+        else{
+          //ensure that the previous species id is the same as my id
+          if(sp.speciesId.get == currentSpeciesId){
+            //check to see if my sounds like ex is already handled
+            val (genex, spex,inspex) =(getSoundEx(sp.genusName.get.trim, false), getSoundEx(sp.speciesName.get.trim, true), getSoundEx(sp.infraspeciesName.get.trim, true))
+            val list = if(genex.isDefined && spex.isDefined && inspex.isDefined) tnDAO.getMatchSoundExNomen(genex.get,spex.get,inspex,nom) else List()
+            if(list.size == 0){
+              //we need to add the infraspecific concept
+              val rank = Ranks.matchTerm(sp.rank, nom) 
+              val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+              val alaConcept = new AlaConceptsDTO(None,sp.lsid, Some(sp.lsid), Some(currentSpeciesLsid) , Some(405), Some(405), None, rankId, None, None, None, None, source)
+              try{
+                mergeDAO.insertNewTerm(alaConcept)
+                count += 1
+              }
+              catch{
+                case e:Exception => println("EXCEPTION: " + e.getMessage())
+              }
+            }
+          }
+        }
+      }
+    }
+    val finish = System.currentTimeMillis()
+    println("Finished processing " + fam.scientificName +" (" +famId+") " + " added " + count + " species in " + ((finish -start)/1000) + " seconds")
+  }
+  
+  
+
+  
+  
+  def generateLftRgtForCoL(){
+    val start = System.currentTimeMillis
+    var startTime = System.currentTimeMillis
+    println("Starting to genrate lft and rgt values for CoL")
+    val roots = colDAO.getMissingParentIds
+    var finishTime = System.currentTimeMillis
+    println("total time to get roots: " + (finishTime - start).toFloat / 60000f + " minutes")
+    
+    var left = 0
+    var right = left
+    roots.foreach { id =>
+      right = handleLsid(id.asInstanceOf[Object], right, right + 1,{lsid =>colDAO.getChildrenIds(lsid.asInstanceOf[Int]).asInstanceOf[List[Object]]},{(lsid,currentDepth, lft, rgt)=>{
+          //println("Updating " + lsid + " " + lft + " " + rgt)  
+          colDAO.updateLftRgt(lsid, currentDepth, lft,rgt)}
+      })
+      finishTime = System.currentTimeMillis
+      println(right
+          + " >> Last key : " + id
+          + ", records per sec: " + 1000f / (((finishTime - startTime).toFloat) / 1000f)
+          + ", time taken for " + 1000 + " records: " + (finishTime - startTime).toFloat / 1000f
+          + ", total time: " + (finishTime - start).toFloat / 60000f + " minutes")
+        startTime = System.currentTimeMillis
+    }
+    finishTime = System.currentTimeMillis
+    println("total time: " + (finishTime - start).toFloat / 60000f + " minutes")
+  }
 
   /**
    * Genertaes the left right and depth values for the concepts in the taxon_concept table. This is
@@ -314,7 +673,7 @@ object NamesGenerator {
     var left = 0
     var right = left
     roots.foreach { id =>
-      right = handleLsid(id, 1, right + 1)
+      right = handleLsid(id, 1, right + 1,{lsid =>tcDAO.getChildrenIds(lsid.asInstanceOf[String])},{(lsid,currentDepth, left, right)=>tcDAO.update(lsid.asInstanceOf[String], currentDepth, left,right)})
 
     }
     var finishTime = System.currentTimeMillis
@@ -323,19 +682,21 @@ object NamesGenerator {
   /**
    * A recursive function that will allow lft rgt value to be determined for the raw taxon_concept table
    */
-  def handleLsid(lsid: String, currentDepth: Int, currentLeft: Int): Int = {
+  def handleLsid(lsid: Object, currentDepth: Int, currentLeft: Int, childProc: ((Object)=>List[Object]), updateProc:((Object,Int,Int,Int)=>Unit)): Int = {
 
     //get all the tc that have this one as a parent
-    val children = tcDAO.getChildrenIds(lsid)
+    val children = childProc(lsid)//tcDAO.getChildrenIds(lsid)
     var left = currentLeft
     var right = left
     children.foreach { child =>
-      right = handleLsid(child, currentDepth + 1, right + 1)
+      right = handleLsid(child, currentDepth + 1, right + 1,childProc,updateProc)
+      
     }
 
     //update the depth of the concept
     //println(lsid + " : depth : " + currentDepth + " left " + currentLeft + " right " + right+1)
-    tcDAO.update(lsid, currentDepth, currentLeft, right + 1)
+    //tcDAO.update(lsid, currentDepth, currentLeft, right + 1)
+    updateProc(lsid, currentDepth, currentLeft, right + 1)
     right + 1
   }
   /**
@@ -405,7 +766,7 @@ object NamesGenerator {
     val arrayBuf = new ArrayBuffer[Thread]()
     var i = 0
     while (i < 25) {
-      val t = new Thread(new AlaInitThread(queue, i))
+      val t = new Thread(new AlaInitThread(queue, i,{tn => addConcept(tn, tn.lsid)}))
       t.start
       arrayBuf += t
       i += 1
@@ -748,18 +1109,26 @@ object NamesGenerator {
       }
     }
   }
+  
+  def generateMergedClassification(){
+    val start = System.currentTimeMillis
+    var finishTime = start
+    var startTime = start
+    println("Starting to generate merged classification ")
+  }
+  
   /**
    * Generates the classification for the ala accepted concepts.
    */
-  def generateClassification(truncate: Boolean) {
+  def generateClassification(truncate: Boolean, dao:Classification) {
     val start = System.currentTimeMillis
     var finishTime = start
     var startTime = start
     println("Starting to generate classification ")
     //turn off the non unique indexes
-    classDAO.disableKeys
+    dao.disableKeys
     if (truncate)
-      classDAO.truncate
+      dao.truncate
     val roots = alaDAO.getRootConcepts
 
     var left = 0
@@ -771,7 +1140,7 @@ object NamesGenerator {
       startTime = System.currentTimeMillis
       left = right + 1
       //println("walking hierarchy for " + name.lsid)
-      right = handleClassLsid(name, 1, right + 1, Map())
+      right = handleClassLsid(name, 1, right + 1, Map(), dao)
       finishTime = System.currentTimeMillis
       if (right - left > 100) {
         println(name.lsid
@@ -789,7 +1158,7 @@ object NamesGenerator {
       //                
     }
     //turn on the non untique indexes
-    classDAO.enableKeys
+    dao.enableKeys
     //classDAO.updateIds
     finishTime = System.currentTimeMillis
     println("total time: " + (finishTime - start).toFloat / 60000f + " minutes")
@@ -797,7 +1166,7 @@ object NamesGenerator {
   /**
    * a recursive method used generate the lft rgt values for the concepts to form a classification
    */
-  def handleClassLsid(alaConcept: AlaConceptsDTO, currentDepth: Int, currentLeft: Int, parentMap: Map[String, String]): Int = {
+  def handleClassLsid(alaConcept: AlaConceptsDTO, currentDepth: Int, currentLeft: Int, parentMap: Map[String, String], dao:Classification): Int = {
 
     //get all the tc that have this one as a parent
     val children = alaDAO.getChildren(alaConcept.lsid)
@@ -841,7 +1210,14 @@ object NamesGenerator {
     }
 
     children.foreach { child =>
-      right = handleClassLsid(child, currentDepth + 1, right + 1, map.toMap)
+      right = handleClassLsid(child, currentDepth + 1, right + 1, map.toMap, dao)
+    }
+    if(dao == mergeclassDAO){
+      //we need to grab the children from the merge table
+      val mchildren = mergeDAO.getChildren(alaConcept.lsid)
+      mchildren.foreach { child =>
+        right = handleClassLsid(child, currentDepth + 1, right + 1, map.toMap, dao)
+      }
     }
 
     //update the depth of the concept
@@ -853,7 +1229,7 @@ object NamesGenerator {
 
     val rank = if (rankTerm.isDefined) Some(rankTerm.get.canonical) else None
     if (alaConcept.acceptedLsid.isDefined) {
-      classDAO.insertSynonym(alaConcept.lsid, alaConcept.acceptedLsid.get, alaConcept.nameLsid.get, alaConcept.id.get, alaConcept.rankId, rank)
+      dao.insertSynonym(alaConcept.lsid, alaConcept.acceptedLsid.get, alaConcept.nameLsid.get, alaConcept.id.get, alaConcept.rankId, rank)
     } else {
       //            classDAO.insertAcceptedConcept(alaConcept.lsid,alaConcept.nameLsid.getOrElse(null),alaConcept.parentLsid.getOrElse(null),
       //                if(alaConcept.rankId.isDefined) alaConcept.rankId.get.toString else null,rank.getOrElse(null), 
@@ -867,7 +1243,7 @@ object NamesGenerator {
         map.get("clsid"), map.get("cname"), map.get("olsid"), map.get("oname"), map.get("flsid"), map.get("fname"),
         map.get("glsid"), map.get("gname"), map.get("slsid"), map.get("sname"), Some(left), Some(right + 1))
 
-      classDAO.insertNewTerm(classification)
+      dao.insertNewTerm(classification)
     }
 
     right + 1
@@ -894,6 +1270,50 @@ object NamesGenerator {
   }
 
 }
+
+//class TaxonNameExThread(queue:BlockingQueue[TaxonNameDTO], thread: Int) extends Runnable {
+//  override def run(){
+//    def stop = NamesGenerator.stopInit && queue.size() == 0
+//    var i =0
+//    val start = System.currentTimeMillis
+//    NamesGenerator.db withSession {
+//      while(!stop){
+//        if(queue.size>0){
+//          val taxonName = queue.poll();
+//          val(genEx, spEx, inSpEx) = NamesGenerator.generateSoundExs(taxonName)
+//          NamesGenerator.tnDAO.updateSoundsLikeExpressions(taxonName.lsid, genEx, spEx, inSpEx)
+//        }
+//      }
+//    }
+//  }
+//}
+
+class CoLMergeThread(queue: BlockingQueue[ColConceptsDTO], thread: Int) extends Runnable {
+  override def run(){
+    def stop = NamesGenerator.stopInit && queue.size() == 0
+    var i = 0
+    val start = System.currentTimeMillis    
+    NamesGenerator.db withSession {
+      while (!stop) {
+        if (queue.size() > 0) {
+          try{
+            i+=1
+            val fam = queue.poll()
+            //perform the action
+            NamesGenerator.addMergedColFamilyConcepts(fam)
+          }
+          catch{
+            case e: Exception => e.printStackTrace();println(e.getMessage)
+          }
+        }
+        else {
+          Thread.sleep(50)
+        }
+      }
+    }
+  }
+}
+
 /**
  * A thread that will perform all the tasks associated with loading a missing APNI concept.
  */
@@ -929,7 +1349,7 @@ class ApniInitThread(queue: BlockingQueue[String], thread: Int) extends Runnable
  * A thread that will perform all the tasks associated with loading a new ala concept.  This
  * will include loading all synonyms etc
  */
-class AlaInitThread(queue: BlockingQueue[TaxonNameDTO], thread: Int) extends Runnable {
+class AlaInitThread(queue: BlockingQueue[TaxonNameDTO], thread: Int, proc:((TaxonNameDTO)=>Unit)) extends Runnable {
   def stop = NamesGenerator.stopInit && queue.size() == 0
   var i = 0
   val start = System.currentTimeMillis
@@ -940,7 +1360,8 @@ class AlaInitThread(queue: BlockingQueue[TaxonNameDTO], thread: Int) extends Run
           try {
             i += 1
             val tn = queue.poll()
-            NamesGenerator.addConcept(tn, tn.lsid)
+            //NamesGenerator.addConcept(tn, tn.lsid)
+            proc(tn)
             if (i > 0 && i % 100 == 0) {
               var finishTime = System.currentTimeMillis
 

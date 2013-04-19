@@ -32,7 +32,9 @@
 	   infraspecies_lsid varchar(83) ,
 	   infraspecies_name varchar(37) ,   
 	   author varchar(100),
-	   nsl_lsid varchar(255),
+	   nsl_lsid varchar(255) ,
+	   lft int,
+	   tgt int,
 	   primary key(taxon_id),
 	   index ix_col_name(scientific_name),
 	   index ix_col_parent(parent_id),
@@ -43,7 +45,9 @@
 	   index ix_col_fam_lsid(family_lsid),
 	   index ix_col_fam_id(family_id),
 	   index ix_col_kingdom(kingdom_name),
-	   index ix_col_fam_name(family_name)
+	   index ix_col_fam_name(family_name),
+	   index idx_col_lft(lft),
+	   index idx_col_rgt(rgt)
 	);
 	
 	DROP TABLE IF EXISTS col_synonyms;

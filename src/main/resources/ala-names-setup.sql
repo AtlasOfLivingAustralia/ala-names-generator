@@ -63,12 +63,18 @@
 	rank varchar(255),
 	nomen_code varchar(255),
 	phrase_name char(1),
-	manuscript_name char(1),	
+	manuscript_name char(1),
+	genex varchar(255),
+	spex varchar(255),
+	inspex varchar(255),
 	primary key(lsid),
 	index ix_tn_name(scientific_name),
 	index ix_tn_sp_ep(specific_epithet),
 	index ix_tn__nomen(nomen_code),
-	index ix_tn_genus(genus)
+	index ix_tn_genus(genus),
+	index idx_tn_genex(genex),
+	index idx_tn_spex(spex),
+	index idx_tn_inspex(inspex)
 	);
 	
 	load data infile '/data/bie-staging/anbg/ALA_AFD_NAME.csv' 
@@ -227,6 +233,40 @@
 		index idx_ac_col_id(col_id),
 		index idx_ala_source(source)
 	);
+		DROP TABLE IF EXISTS merge_ala_concepts;
+		
+		create table merge_ala_concepts(
+		id int NOT NULL AUTO_INCREMENT primary key,
+		parent_id int,
+		lsid varchar(255),
+		name_lsid varchar(255),
+		parent_lsid varchar(255),
+		parent_src int,
+		src int,
+		accepted_lsid varchar(255),
+		rank_id int,
+		lft int,
+		rgt int,
+		depth int,
+		synonym_type int,
+		genus_sound_ex varchar(255),
+		sp_sound_ex varchar(255),
+		insp_sound_ex varchar(255),
+		col_id int,		
+		source char(4),
+		excluded char(1),
+		new_id int,
+		
+		unique index idx_ac_lsid(lsid),
+		index idx_ala_name_lsid(name_lsid),
+		index idx_ala_parent(parent_lsid),
+		index idx_ala_accepted(accepted_lsid),
+		index idx_g_sound_ex(genus_sound_ex),
+		index idx_s_sound_ex(sp_sound_ex),
+		index idx_i_sound_ex(insp_sound_ex),
+		index idx_ac_col_id(col_id),
+		index idx_ala_source(source)
+	);
 	
 	DROP TABLE IF EXISTS ala_synonyms;
 	create table ala_synonyms(
@@ -243,6 +283,26 @@
 		index idx_ala_syn_col_id(col_id),
 		index idx_ala_syn_lsid(lsid)
 	);
+	
+	DROP TABLE IF EXISTS merge_ala_synonyms;
+	create table merge_ala_synonyms(
+		id int NOT NULL AUTO_INCREMENT primary key,
+		lsid varchar(255),
+		name_lsid varchar(255),
+		accepted_lsid varchar(255),
+		accepted_id int,
+		col_id int,
+		syn_type int,
+		new_id int,
+		index idx_ala_syn_name_lsid(name_lsid),
+		index idx_ala_syn_ac_lsid(accepted_lsid),
+		index idx_ala_syn_ac_id(accepted_id),
+		index idx_ala_syn_col_id(col_id),
+		index idx_ala_syn_lsid(lsid)
+	);
+	
+	
+	DROP TABLE IF EXISTS ala_classification;
 	
 	create table ala_classification(
 		lsid varchar(255),
@@ -279,6 +339,46 @@
 		index idx_cl_name_lsid(name_lsid),
 		index idx_cl_lft(lft),
 		index idx_cl_rgt(rgt)
+	);
+	
+	
+	DROP TABLE IF EXISTS merge_ala_classification;
+	
+	create table merge_ala_classification(
+		lsid varchar(255),
+		name_lsid varchar(255),
+		parent_lsid varchar(255),	
+		accepted_lsid varchar(255),
+		rank_id int,
+		rank varchar(30),
+		klsid varchar(255),
+		kname varchar(255),
+		plsid varchar(255),
+		pname varchar(255),
+		clsid varchar(255),
+		cname varchar(255),
+		olsid varchar(255),
+		oname varchar(255),
+		flsid varchar(255),
+		fname varchar(255),
+		glsid varchar(255),
+		gname varchar(255),
+		slsid varchar(255),
+		sname varchar(255),
+		lft int,
+		rgt int,
+		id int,
+		parent_id int,
+		excluded char(1),
+		col_id int,
+		source varchar(4),
+		primary key (lsid),
+		index ix_mala_cl_rank_id(rank_id),
+		index ix_mala_cl_accepted(accepted_lsid),
+		index ix_mala_cl_kingdom_family(kname, fname),
+		index idx_mcl_name_lsid(name_lsid),
+		index idx_mcl_lft(lft),
+		index idx_mcl_rgt(rgt)
 	);
 	
 	DROP TABLE IF EXISTS extra_identifiers;

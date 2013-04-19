@@ -43,7 +43,7 @@ case class AlaClassificationDTO(lsid: String, nameLsid: Option[String], parentLs
 case class TaxonNameDTO(lsid: String, scientificName: String, title: String,
   uninomial: String, genus: String, specificEpithet: String, subspecificEpithet: String, infraspecificEpithet: String,
   hybridForm: String, authorship: String, authorYear: String, basionymAuthor: String, rank: String,
-  nomenCode: String, phraseName: String, manuscriptName: String)
+  nomenCode: String, phraseName: String, manuscriptName: String, genex:Option[String], spex:Option[String], inspex:Option[String])
 
 case class TaxonConceptDTO(lsid: String, rank: String, scientificName: String, nameLsid: String,
   lastModified: java.sql.Date, protologue: String, isAccepted: String, isSuperseded: Option[String], isDraft: String, parentLsid: Option[String], synonymType: Option[Int],
@@ -116,8 +116,11 @@ trait ScalaQuery {
     def nomenCode = column[String]("nomen_code")
     def phraseName = column[String]("phrase_name")
     def manuscriptName = column[String]("manuscript_name")
+    def genex =column[Option[String]]("genex")
+    def spex =column[Option[String]]("spex")
+    def inspex =column[Option[String]]("inspex")
 
-    def * = lsid ~ scientificName ~ title ~ uninomial ~ genus ~ specificEpithet ~ subspecificEpithet ~ infraspecificEpithet ~ hybridForm ~ authorship ~ authorYear ~ basionymAuthor ~ rank ~ nomenCode ~ phraseName ~ manuscriptName <> (TaxonNameDTO, TaxonNameDTO.unapply _)
+    def * = lsid ~ scientificName ~ title ~ uninomial ~ genus ~ specificEpithet ~ subspecificEpithet ~ infraspecificEpithet ~ hybridForm ~ authorship ~ authorYear ~ basionymAuthor ~ rank ~ nomenCode ~ phraseName ~ manuscriptName ~ genex ~ spex ~ inspex <> (TaxonNameDTO, TaxonNameDTO.unapply _)
 
     //val columns = *.productIterator.toList.map(value => value.asInstanceOf[NamedColumn[_]].name)
   }
@@ -199,8 +202,54 @@ trait ScalaQuery {
 
     def * = id ~ lsid ~ nameLsid ~ parentLsid ~ parentSrc ~ src ~ acceptedLsid ~ rankId ~ synonymType ~ genusSoundEx ~ speciesSoundEx ~ infraSoundEx ~ source <> (AlaConceptsDTO, AlaConceptsDTO.unapply _)
   }
+  
+    val MergeAlaConcepts = new Table[AlaConceptsDTO]("merge_ala_concepts") {
+    def id = column[Option[Int]]("id")
+    def lsid = column[String]("lsid", O.PrimaryKey)
+    def nameLsid = column[Option[String]]("name_lsid")
+    def parentLsid = column[Option[String]]("parent_lsid")
+    def parentSrc = column[Option[Int]]("parent_src")
+    def src = column[Option[Int]]("src")
+    def acceptedLsid = column[Option[String]]("accepted_lsid")
+    def rankId = column[Option[Int]]("rank_id")
+    def synonymType = column[Option[Int]]("synonym_type")
+    def genusSoundEx = column[Option[String]]("genus_sound_ex")
+    def speciesSoundEx = column[Option[String]]("sp_sound_ex")
+    def infraSoundEx = column[Option[String]]("insp_sound_ex")
+    def source = column[Option[String]]("source")
+
+    def * = id ~ lsid ~ nameLsid ~ parentLsid ~ parentSrc ~ src ~ acceptedLsid ~ rankId ~ synonymType ~ genusSoundEx ~ speciesSoundEx ~ infraSoundEx ~ source <> (AlaConceptsDTO, AlaConceptsDTO.unapply _)
+  }
 
   val AlaClassification = new Table[AlaClassificationDTO]("ala_classification") {
+    def lsid = column[String]("lsid", O.PrimaryKey)
+    def nameLsid = column[Option[String]]("name_lsid")
+    def parentLsid = column[Option[String]]("parent_lsid")
+    def acceptedLsid = column[Option[String]]("accepted_lsid")
+    def rankId = column[Option[Int]]("rank_id")
+    def rank = column[Option[String]]("rank")
+    def klsid = column[Option[String]]("klsid")
+    def kname = column[Option[String]]("kname")
+    def plsid = column[Option[String]]("plsid")
+    def pname = column[Option[String]]("pname")
+    def clsid = column[Option[String]]("clsid")
+    def cname = column[Option[String]]("cname")
+    def olsid = column[Option[String]]("olsid")
+    def oname = column[Option[String]]("oname")
+    def flsid = column[Option[String]]("flsid")
+    def fname = column[Option[String]]("fname")
+    def glsid = column[Option[String]]("glsid")
+    def gname = column[Option[String]]("gname")
+    def slsid = column[Option[String]]("slsid")
+    def sname = column[Option[String]]("sname")
+    def lft = column[Option[Int]]("lft")
+    def rgt = column[Option[Int]]("rgt")
+
+    def * = lsid ~ nameLsid ~ parentLsid ~ acceptedLsid ~ rankId ~ rank ~ klsid ~ kname ~ plsid ~ pname ~ clsid ~ cname ~ olsid ~ oname ~ flsid ~ fname ~ glsid ~ gname ~ slsid ~ sname ~ lft ~ rgt <> (AlaClassificationDTO, AlaClassificationDTO.unapply _)
+
+  }
+  
+  val MergeAlaClassification = new Table[AlaClassificationDTO]("merge_ala_classification") {
     def lsid = column[String]("lsid", O.PrimaryKey)
     def nameLsid = column[Option[String]]("name_lsid")
     def parentLsid = column[Option[String]]("parent_lsid")
@@ -289,23 +338,50 @@ class ColSynonymsJDBCDAO extends ScalaQuery {
     } yield cs.nslLsid).update(nslLsid)
   }
 }
+trait Classification{
+  def insertSynonym(lsid: String, acceptedLsid: String, nameLsid: String, id: Int, rankId: Option[Int], rank: Option[String])
+  def insertNewTerm(alaClassification: AlaClassificationDTO)
+  def truncate()
+  def disableKeys()
+  def enableKeys()
+}
+class MergeAlaClassificationJDBCDAO extends ScalaQuery with Classification {
+  override def insertSynonym(lsid: String, acceptedLsid: String, nameLsid: String, id: Int, rankId: Option[Int], rank: Option[String]){
+    
+  }
+  override def insertNewTerm(alaClassification: AlaClassificationDTO) {
+
+    MergeAlaClassification.*.insert(alaClassification)
+  }
+  override def truncate() {
+    updateNA("truncate table merge_ala_classification").first
+  }
+  //USED
+  override def disableKeys() {
+    updateNA("alter table merge_ala_classification disable keys").first
+  }
+  //USED
+  override def enableKeys() {
+    updateNA("alter table merge_ala_classification enable keys").first
+  }
+}
 //USED
-class AlaClassificationJDBCDAO extends ScalaQuery {
+class AlaClassificationJDBCDAO extends ScalaQuery with Classification {
 
   val familyQuery = for {
     Projection(kingdom, family) <- Parameters[String, String]
     cl <- AlaClassification if cl.kname === kingdom && cl.fname === family && cl.rankId === 5000
   } yield cl.lsid
 
-  def truncate() {
+  override def truncate() {
     updateNA("truncate table ala_classification").first
   }
   //USED
-  def disableKeys() {
+  override def disableKeys() {
     updateNA("alter table ala_classification disable keys").first
   }
   //USED
-  def enableKeys() {
+  override def enableKeys() {
     updateNA("alter table ala_classification enable keys").first
   }
 
@@ -320,7 +396,7 @@ class AlaClassificationJDBCDAO extends ScalaQuery {
 
   }
 
-  def insertSynonym(lsid: String, acceptedLsid: String, nameLsid: String, id: Int, rankId: Option[Int], rank: Option[String]) {
+  override def insertSynonym(lsid: String, acceptedLsid: String, nameLsid: String, id: Int, rankId: Option[Int], rank: Option[String]) {
     if (rank.isDefined && rankId.isDefined) {
       val sql = """insert into ala_classification(lsid, accepted_lsid, id,rank_id, rank) values (?,?,?,?,?)"""
 
@@ -343,7 +419,7 @@ class AlaClassificationJDBCDAO extends ScalaQuery {
       gname, slsid, sname, lft, rgt, id)
   }
 
-  def insertNewTerm(alaClassification: AlaClassificationDTO) {
+  override def insertNewTerm(alaClassification: AlaClassificationDTO) {
 
     AlaClassification.*.insert(alaClassification)
   }
@@ -387,6 +463,11 @@ class ColConceptsJDBCDAO extends ScalaQuery {
     col <- ColConcepts if col.parentId === id
   } yield col
 
+  val childrenIdQuery = for {
+    id <- Parameters[Int]
+    col <- ColConcepts if col.parentId === id
+  } yield col.taxonId
+  
   //query to get genera for a supplied family
   val genFamilyQuery = for {
     familyId <- Parameters[Int]
@@ -424,6 +505,24 @@ class ColConceptsJDBCDAO extends ScalaQuery {
     col <- ColConcepts if col.scientificName === genus && col.familyName === family
   } yield col.lsid
 
+  val updateLftRgtSQL = "update col_concepts set lft = ?, rgt = ? where taxon_id = ?"
+  
+  def updateLftRgt(id: Object, depth: Int, left: Int, right: Int) {
+    //println("SQL Updating " + id + " " + left + " " + right)
+    update[(Int, Int, Int)](updateLftRgtSQL).first(left,right,id.asInstanceOf[Int])
+
+  }
+  val q1 = for {
+      tc <- ColConcepts if tc.parentId === 0
+    } yield tc.taxonId
+    
+  def getMissingParentIds():List[Int]={
+     q1.list
+  }
+  
+  def getChildrenIds(id:Int):List[Int]={
+    childrenIdQuery.list(id)
+  }
   /**
    * returns the children CoL concepts for the suppied id
    */
@@ -484,6 +583,36 @@ class ColConceptsJDBCDAO extends ScalaQuery {
       col <- ColConcepts if col.taxonId === id
     } yield col.nslLsid).update(nslLsid)
   }
+  
+  //get all the families that need to be merged into AFD
+  def getAnimalPlantFamiles():List[ColConceptsDTO]={
+    (for{
+      col <- ColConcepts if ((col.kingdomName === "Animalia" || col.kingdomName === "Plantae") && col.rank === "family")  
+    } yield col).list
+  }
+  /*
+   *   val q1 = for {
+      Join(concept, name) <- TaxonConcept leftJoin TaxonName on (_.nameLsid is _.lsid) if name.lsid === null.asInstanceOf[String]
+      _ <- Query groupBy (concept.nameLsid)
+    } yield concept.nameLsid
+   */
+  def getSpeciesForFamily(id:Int):List[ColConceptsDTO]={
+    //There is a BUG yielding col by itself in this situation: https://groups.google.com/forum/#!msg/scalaquery/rAuQWKhUOh8/iA9sNUSbIeYJ
+    (for{
+      Join(col,ac) <- ColConcepts leftJoin AlaConcepts on (_.lsid is _.lsid) if ac.lsid === null.asInstanceOf[String] && col.familyId === id && col.rank =!="genus"
+      _ <- Query orderBy (Ordering.Asc(col.genusId))
+      _ <- Query orderBy (Ordering.Asc(col.speciesId))
+      _ <- Query orderBy (Ordering.Asc(col.infraspeciesId))  
+    } yield col.*).list
+//    (for{
+//      col <- ColConcepts if col.familyId === id && col.rank =!= "genus"
+//      ac <-  AlaConcepts if col.lsid ==== ac.lsid 
+//      Join(col,ac) <- Relationships leftJoin ColConcepts TaxonConcept on (_.toLsid is _.nameLsid) if tc.lsid === null.asInstanceOf[String]
+//        _ <- Query orderBy (Ordering.Asc(col.genusId))
+//        _ <- Query orderBy (Ordering.Asc(col.speciesId))
+//        _ <- Query orderBy (Ordering.Asc(col.infraspeciesId))
+//    } yield col).list
+  }
 }
 
 class ColTaxonTreeJDBCDAO extends ScalaQuery {
@@ -532,6 +661,31 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
     tn <- TaxonName if tn.scientificName === genusName && tn.specificEpithet === specificEpithet && tn.nomenCode === nomen
     ac <- AlaConcepts if ac.nameLsid === tn.lsid
   } yield tn
+  
+  val soundExGSISourceQuery = for {
+    Projection(genex, spex, inex, nom) <- Parameters[String, String, String,String]
+    tn <- TaxonName if tn.genex === genex && tn.spex === spex && tn.inspex === inex && tn.nomenCode === nom
+  } yield tn.lsid
+
+  val soundExGSSourceQuery = for {
+    Projection(genex, spex, nom) <- Parameters[String, String,String]
+    tn <- TaxonName if tn.genex === genex && tn.spex === spex && tn.inspex === null.asInstanceOf[String] && tn.nomenCode === nom
+  } yield tn.lsid
+  
+  
+    def getMatchSoundExNomen(genex: String, spex: String, inex: Option[String],nom:String):List[String]={
+    inex match {
+      case None => soundExGSSourceQuery.list(genex, spex, nom)
+      case _=> soundExGSISourceQuery.list(genex, spex, inex.get, nom)
+    }
+  }
+  
+  //Insert the supplied sounds like expression for the supplied lsid
+  def updateSoundsLikeExpressions(lsid:String, genex:Option[String], spex:Option[String], inspex:Option[String]){
+    (for {
+      tn <- TaxonName if tn.lsid === lsid
+    } yield tn.genex ~ tn.spex ~ tn.inspex).update(genex, spex, inspex)
+  }
 
   // returns the list of records that "has generic combination" but missingthe taxon_Concept
   def getConceptForNameSynMissingConcept(): List[(String, String)] = {
@@ -820,6 +974,25 @@ class RelationshipJDBCDAO extends ScalaQuery {
 
     }
 
+  }
+}
+class MergeAlaConceptsJBBCDAO extends ScalaQuery{
+  
+  val childrenQuery = for {
+    lsid <- Parameters[String]
+    ac <- MergeAlaConcepts if ac.parentLsid === lsid
+  } yield ac
+  
+  def insertNewTerm(alaConcept: AlaConceptsDTO) {      
+    MergeAlaConcepts.*.insert(alaConcept)
+  }
+  def getChildren(lsid: String): List[AlaConceptsDTO] = {  
+    childrenQuery.list(lsid)
+  }
+  
+  def deleteDuplicates(){
+    val query ="""delete from merge_ala_concepts where lsid in (select lsid from ala_concepts ac where ac.lsid like '%catalogue%')"""
+    updateNA(query).first
   }
 }
 //USED
