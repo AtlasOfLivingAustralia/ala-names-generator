@@ -83,3 +83,14 @@
 	LEFT JOIN dictionary_relationship dr on syn.syn_type = dr.id;
 	
 	
+	
+	
+	
+    select cl.lsid,cl.lft,cl.rgt,cl.rank, 
+    case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8) when tc.scientific_name is not null && tc.scientific_name<>'' then convert(tc.scientific_name using utf8)  when cc.scientific_name is not null then convert(cc.scientific_name using utf8) when en.scientific_name is not null then convert(en.scientific_name using utf8)  else ""end
+    INTO OUTFILE '/data/bie-staging/ala-names/ala_merge_taxa.txt' FIELDS ENCLOSED BY '"'
+    from merge_ala_classification cl
+    left join taxon_name tn on cl.name_lsid = tn.lsid 
+    left join  col_concepts cc on cl.lsid = cc.lsid
+    left join extra_names en on cl.lsid = en.lsid
+    left join taxon_concept tc on cl.lsid = tc.lsid;

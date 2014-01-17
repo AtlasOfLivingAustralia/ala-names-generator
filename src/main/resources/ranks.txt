@@ -36,7 +36,7 @@
 8001		nothosubspecies
 8010		variety	var
 8011		nothovariety	nothovar
-8020		form	form taxon
+8020		form	form taxon	forma
 8021		nothoform
 8030		biovar
 8040		serovar

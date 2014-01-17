@@ -17,6 +17,9 @@ object NamesGenerator {
   val colTcDAO = new ColConceptsJDBCDAO
   val extraDAO = new ExtraNamesJDBCDAO
   val colDAO = new ColConceptsJDBCDAO
+  val padDAO = new NamesListPaddingJDBCDAO
+  val nlnDAO = new NamesListNameJDBCDAO
+  val nlDAO = new NamesListJDBCDAO
   val db = new BoneCPDatabase
   //indicates that the init threads should stop
   var stopInit = false
@@ -41,11 +44,14 @@ object NamesGenerator {
     var tnSoundEx=false
     var mergeTc=false
     var mergeClass=false
+    var padUsingLists=false
+    var dwcFile:Option[String] = None
     val parser = new OptionParser("ALA Name Generation Options") {
             opt("nsl","Preprocesses the NSL records so to determine classification depths",{lftRgtNSL=true})
             opt("init","Initialise the NSL taxon names to be used in ALA",{initNames = true})
             opt("apni","Initialise the APNI taxon names to be used in ALA",{addApni = true})
             opt("caab","Pads out AFD data with missing CAAB species",{padCaab=true})
+            opt("lists","Pads out the ala concepts with data in the names_list table based on configured ",{padUsingLists=true})
             opt("col","Pads out AFD data with missing CoL species that have at least one occurrence in Australia",{padCol = true})
             opt("kingdoms","Adds missing CoL kingdoms ot the ALA names",{shouldAddMissingKingdoms = true})
             opt("class","Generate the final classification",{createClass = true})
@@ -56,16 +62,20 @@ object NamesGenerator {
             opt("tnexp","Generates the sounds like expressions for the taxon names",{tnSoundEx=true})
             opt("merge","Merge the remaining COL concepts into the ALA concepts - allowing original to remain separate" , {mergeTc=true})
             opt("mergecl","Create the merged classification" , {mergeClass=true})
+            opt("dwc","a dwc file to load in the names list tables - used to pad out NSL", {s:String => dwcFile=Some(s)})
         }
         println("Starting " + new java.util.Date)
         if(parser.parse(args)){
             
           db withSession {
+            if(dwcFile.isDefined){
+              DwCANamesLoader.loadArchive(dwcFile.get)
+            }
             if(mergeClass)
               generateClassification(true, mergeclassDAO)
             if(mergeTc)
               generateMergedConcepts()
-            if(tnSoundEx)
+            if(all || tnSoundEx)
               generateTaxonNamesSoundExName()
             if(colLftRgt)
               generateLftRgtForCoL()
@@ -82,6 +92,9 @@ object NamesGenerator {
             if(all || most || padCaab){
               padAFDCaab()
             }
+            if(all || padUsingLists){
+              padUsingNamesLists()
+            }
             if(all || most || padCol){
               padAFDCol()
             }
@@ -97,6 +110,92 @@ object NamesGenerator {
           parser.showUsage
         println("Ending " + new java.util.Date)
   }
+  
+  def padUsingNamesLists(){
+    //get all the names list merge items
+    val list = padDAO.getAllNamesListPadding()
+    //create the array thread queue stuff
+    val queue = new ArrayBlockingQueue[NamesListPaddingDTO](30)
+    val arrayBuf = new ArrayBuffer[Thread]()
+    var i = 0
+    while (i < 10) {
+      val t = new Thread(new GenericQueueThread[NamesListPaddingDTO](queue, i,{pad => {
+        pad.padType match{
+          case "all" => performPadAll(pad)
+          case "merge" =>performPadMerge(pad)
+          case _ => println("Unsupported pad type " + pad.padType)
+        }
+      }}))
+      t.start
+      arrayBuf += t
+      i += 1
+    }
+    list.foreach(item =>{
+      //
+      while (queue.size >= 29) {
+        Thread.sleep(50)
+      }      
+      queue.add(item)
+    })
+    stopInit = true
+    arrayBuf.foreach(t => t.join)
+  }
+  /**
+   * Adds all the supplied concepts without checking for clashes.
+   */
+  def performPadAll(nlp:NamesListPaddingDTO){
+    println(new java.util.Date() + " Starting to pad all for " + nlp)
+    //get the list details
+    val nl = nlDAO.getNamesListById(nlp.id).get
+    val src = Some(nl.name)
+    //if scientific name exists 
+    if(nlp.scientificName.isDefined){
+      //get the name as it appears in the names list
+      val rootNameListItem = nlnDAO.getByNameAndList(nlp.id, nlp.scientificName.get)
+      println(new java.util.Date() + " List root item " + rootNameListItem)
+      //obtain the NSL concept for the supplied name
+      val nslRootItem = tnDAO.getTaxonNameIfIncluded(nlp.scientificName.get, rootNameListItem.nomenCode.getOrElse("Zoological"))
+      println(new java.util.Date() + " NSL root item " + nslRootItem)
+      val parentLsid = if(nslRootItem.isDefined)alaDAO.getAlaConceptForName(nslRootItem.get.lsid).get.lsid else rootNameListItem.lsid
+      println(new java.util.Date() + " Parent LSID: "+ parentLsid)
+      //add the root object if necessary
+      if(parentLsid == rootNameListItem.lsid){
+        //add it
+        /*
+         * case class AlaConceptsDTO(id: Option[Int], lsid: String, nameLsid: Option[String], parentLsid: Option[String],
+  parentSrc: Option[Int], src: Option[Int], acceptedLsid: Option[String], rankId: Option[Int], synonymType: Option[Int], genusSoundEx: Option[String], speciesSoundEx: Option[String], infraSoundEx: Option[String],
+  source: Option[String])
+         */
+        //lookup the rank
+        val rank = Ranks.matchTerm(rootNameListItem.rank.getOrElse(""), rootNameListItem.nomenCode.getOrElse("Zoological"));
+        //default rankId is unranked
+        val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+        
+        val alac = new AlaConceptsDTO(None, parentLsid, None, None,None,None,None,rankId,None,rootNameListItem.genex, rootNameListItem.spex, rootNameListItem.inspex, src)
+        alaDAO.insertNewTerm(alac)
+        
+      }
+      //retrieve all the children for he names list root item
+      recursivelyAddChildrenAll(nlp.id,rootNameListItem.lsid, parentLsid, src)
+    }
+  }
+  def recursivelyAddChildrenAll(listId:Int,listParentLsid:String, alaParentLsid:String, src:Option[String]){
+    //get the list of children for the supplied parent
+    nlnDAO.getByParentAndList(listId, listParentLsid).foreach{child =>
+        //add the child
+        val rank = Ranks.matchTerm(child.rank.getOrElse(""), child.nomenCode.getOrElse("Zoological"));
+        //default rankId is unranked
+        val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+        val alaConcept = new AlaConceptsDTO(None, child.lsid, None, Some(alaParentLsid),None,None,None,rankId, None, child.genex, child.spex, child.inspex, src)
+        alaDAO.insertNewTerm(alaConcept)
+        //add its children
+        recursivelyAddChildrenAll(listId, child.lsid, child.lsid, src)
+    }
+  }
+  def performPadMerge(nlp:NamesListPaddingDTO){
+    
+  }
+  
   //TODO FIX the COL padding this is not looking at CAAB before adding a species...
   def padAFDCol(){
           
@@ -1345,6 +1444,34 @@ class ApniInitThread(queue: BlockingQueue[String], thread: Int) extends Runnable
     }
   }
 }
+
+class GenericQueueThread[T](queue: BlockingQueue[T], thread:Int, proc:(T => Unit)) extends Runnable {
+  
+  def stop = NamesGenerator.stopInit && queue.size() == 0
+  override def run(){
+    var i = 0
+    val start = System.currentTimeMillis
+    NamesGenerator.db withSession {
+      while (!stop) {
+        if (queue.size() > 0) {
+          try {
+            i += 1
+            val item = queue.poll()            
+            proc(item)
+            if (i > 0 && i % 100 == 0) {
+              var finishTime = System.currentTimeMillis
+              println("THREAD " + thread + " processed " + i + " in " + (finishTime - start).toFloat / 60000f + " minutes")
+            }
+          } catch{
+            case e: Exception => println(e.getMessage)
+          }
+        }
+      }  
+    }
+  }
+  
+}
+
 /**
  * A thread that will perform all the tasks associated with loading a new ala concept.  This
  * will include loading all synonyms etc

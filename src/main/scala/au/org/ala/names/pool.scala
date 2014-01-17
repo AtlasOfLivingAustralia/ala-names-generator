@@ -11,7 +11,7 @@ class BoneCPDatabase extends Database{
   val driver = MySQLDriver
   val config = new BoneCPConfig
   //config.setJdbcUrl("jdbc:mysql://localhost/names_2012")
-  config.setJdbcUrl("jdbc:mysql://152.83.193.197/ala_names")
+  config.setJdbcUrl("jdbc:mysql://152.83.193.197/ala_names_2013")
   config.setUsername("root")
   config.setPassword("password")
   config.setStatementsCacheSize(1000)

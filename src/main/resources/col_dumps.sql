@@ -37,3 +37,14 @@ from common_name_element cne
 join common_name cn on  cne.id = cn.common_name_element_id 
 join _taxon_tree tt on cn.taxon_id = tt.taxon_id
 where country_iso in('033', '327','241','245','239','303','188','352','227','AU','032','286','336') or (language_iso ='eng' and country_iso is null);
+
+-- create the CSV file for the DWCA
+select 'id','taxonID', 'parentNameUsageID', 'scientificName','kingdom','phylum','class',
+'order','family','genus','specificEpithet', 'infraspecificEpothet','taxonRank', 'scientificNameAuthorship'
+UNION
+select c.taxon_id,case when c.taxon_id in (2343837,2346480,2342061,2343307,2343625,2345278,2340313,2349768,2348007,2349727)
+ then concat_ws('|',c.lsid,c.taxon_id) else c.lsid end,case when p.taxon_id in (2343837,2346480,2342061,2343307,2343625,2345278,2340313,2349768,2348007,2349727)then concat_ws('|',p.lsid,p.taxon_id) else p.lsid end,c.scientific_name,c.kingdom_name, c.phylum_name,c.class_name,
+c.order_name, c.family_name, c.genus_name, c.species_name, c.infraspecies_name, c.rank, c.author
+INTO OUTFILE '/data/bie-staging/ala-names/col_dwc.txt' FIELDS ENCLOSED BY '"'
+from col_concepts c left join col_concepts p on c.parent_id = p.taxon_id
+

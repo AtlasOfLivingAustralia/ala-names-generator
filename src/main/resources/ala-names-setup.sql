@@ -1,10 +1,60 @@
 	-- create the database
-	CREATE DATABASE IF NOT EXISTS ala_names
+	CREATE DATABASE IF NOT EXISTS ala_names_2013
   	DEFAULT CHARACTER SET utf8
  	DEFAULT COLLATE utf8_general_ci;
 
-  	use ala_names;
+  	use ala_names_2013;
 
+  	DROP TABLE IF EXISTS names_list;
+
+    CREATE TABLE `names_list` (
+    id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    name varchar(256),
+    organisation varchar(256),
+    contact varchar(256)    
+    ) DEFAULT CHARSET=utf8 ;
+  	
+    
+    DROP TABLE IF EXISTS names_list_name;
+
+    CREATE TABLE `names_list_name` (
+    `list_id` int(11),    
+    `lsid` varchar(255),
+    `accepted_lsid` varchar(256),
+    `parent_lsid` varchar(256),
+    `original_lsid` varchar(256),
+    `scientific_name` varchar(256),
+    `publication_year` varchar(20),
+    `genus` varchar(256),
+    `specific_epithet` varchar(256),
+    `infraspecific_ephithet` varchar(256) ,
+    `rank` varchar(30),
+    `authorship` varchar(256),
+    `nomen_code` varchar(30),
+    `taxonomic_status` varchar(100) ,
+    `nomenclatural_status` varchar(100) ,
+    `occurrence_status` varchar(100),
+    genex varchar(255),
+    spex varchar(255),
+    inspex varchar(255),
+    PRIMARY KEY (list_id,`lsid`),
+    index idx_nln_list_parent (list_id, parent_lsid),
+    CONSTRAINT `names_list_name_ibfk_1` FOREIGN KEY (`list_id`) REFERENCES `names_list` (`id`)
+    ) DEFAULT CHARSET=utf8 ;
+
+    
+    DROP TABLE IF EXISTS names_list_padding;
+
+    CREATE TABLE `names_list_padding` (
+    `id` int(11) NOT NULL,
+    `taxon_rank` varchar(30),
+    `scientific_name` varchar(256),
+    pad_type varchar(10),
+    KEY `id` (`id`),
+    CONSTRAINT `names_list_padding_ibfk_1` FOREIGN KEY (`id`) REFERENCES `names_list` (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ;
+    
+  	
 	DROP TABLE IF EXISTS taxon_concept;
 	
 	create table taxon_concept(
@@ -67,6 +117,7 @@
 	genex varchar(255),
 	spex varchar(255),
 	inspex varchar(255),
+	unused char(1),
 	primary key(lsid),
 	index ix_tn_name(scientific_name),
 	index ix_tn_sp_ep(specific_epithet),
@@ -74,7 +125,8 @@
 	index ix_tn_genus(genus),
 	index idx_tn_genex(genex),
 	index idx_tn_spex(spex),
-	index idx_tn_inspex(inspex)
+	index idx_tn_inspex(inspex),
+	index idx_tn_unused(unused)
 	);
 	
 	load data infile '/data/bie-staging/anbg/ALA_AFD_NAME.csv' 
@@ -83,6 +135,13 @@
 	(lsid, @ignore, scientific_name, title, rank, authorship, @ignore, author_year, @ignore, @ignore, 
 	nomen_code, genus, specific_epithet, subspecific_epithet, @ignore, hybrid_form, infraspecific_epithet, 
 	@ignore, basionym_author, @ignore, phrase_name, manuscript_name);
+	
+	load data infile '/data/bie-staging/anbg/ALA_AFD_UNUSED_NAME.csv' 
+    IGNORE INTO table taxon_name CHARACTER SET 'utf8'
+    FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"' IGNORE 1 LINES
+    (lsid, @ignore, scientific_name, title, rank, authorship, @ignore, author_year, @ignore, @ignore, 
+    nomen_code, genus, specific_epithet, subspecific_epithet, @ignore, hybrid_form, infraspecific_epithet, 
+    @ignore, basionym_author, @ignore, phrase_name, manuscript_name)set unused='T';
 	
 	load data infile '/data/bie-staging/anbg/ALA_APNI_NAME.csv' 
 	IGNORE INTO table taxon_name CHARACTER SET 'utf8'
@@ -220,7 +279,7 @@
 		sp_sound_ex varchar(255),
 		insp_sound_ex varchar(255),
 		col_id int,		
-		source char(4),
+		source varchar(10),
 		excluded char(1),
 		
 		unique index idx_ac_lsid(lsid),
@@ -525,7 +584,7 @@
 	update taxon_concept tc, relationships r set tc.is_superseded='T' where r.relationship='superseded by' and tc.lsid = r.from_lsid and tc.is_accepted='Y'
 	-- apply the excluded flag to concepts that are accpeted but excluded...
 	update taxon_concept tc, relationships r set tc.is_excluded='T' where r.relationship='excludes' and tc.name_lsid = r.to_lsid and tc.is_accepted='Y'
-	--update the not_taxon_tree flag so that we can indicate which taxon_names are marked as accepted in the taxon csv BUT are only synonyms in the tree
+	-- update the not_taxon_tree flag so that we can indicate which taxon_names are marked as accepted in the taxon csv BUT are only synonyms in the tree
 	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept='T' where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid <>''
 	update taxon_concept tc, nsl_taxon_concept ntc set tc.no_tree_concept=null where tc.name_lsid = ntc.name_lsid and tc.is_accepted='Y' and tc.is_superseded is null and tc.is_excluded is null and ntc.synonym_of_lsid =''
 

@@ -28,6 +28,16 @@ trait TaxonNameDAO extends DAO {
 }
 //USED
 
+case class NamesListDTO(id:Option[Int],name:String, organisation:Option[String], contact:Option[String])
+
+case class NamesListPaddingDTO(id:Int, taxonRank:Option[String], scientificName:Option[String], padType:String)
+
+case class NamesListNameDTO(list_id:Int, lsid:String, acceptedLsid:Option[String], parentLsid:Option[String],
+            originalLsid:Option[String], scientificName:String, publicationYear:Option[String], genus:Option[String],
+            specificEpithet:Option[String], infraSpecificEpithet:Option[String], rank:Option[String], author:Option[String],
+            nomenCode:Option[String], taxonomicStatus:Option[String], nomenStatus:Option[String], occurrenceStatus:Option[String], 
+            genex:Option[String],spex:Option[String], inspex:Option[String])
+
 case class ExtraNamesDTO(lsid:String,scientificName:String, authority:String, commonName:String, family:String,genus:String,specificEpithet:String)
 
 case class AlaConceptsDTO(id: Option[Int], lsid: String, nameLsid: Option[String], parentLsid: Option[String],
@@ -43,7 +53,7 @@ case class AlaClassificationDTO(lsid: String, nameLsid: Option[String], parentLs
 case class TaxonNameDTO(lsid: String, scientificName: String, title: String,
   uninomial: String, genus: String, specificEpithet: String, subspecificEpithet: String, infraspecificEpithet: String,
   hybridForm: String, authorship: String, authorYear: String, basionymAuthor: String, rank: String,
-  nomenCode: String, phraseName: String, manuscriptName: String, genex:Option[String], spex:Option[String], inspex:Option[String])
+  nomenCode: String, phraseName: String, manuscriptName: String, genex:Option[String], spex:Option[String], inspex:Option[String], unused:Option[String])
 
 case class TaxonConceptDTO(lsid: String, rank: String, scientificName: String, nameLsid: String,
   lastModified: java.sql.Date, protologue: String, isAccepted: String, isSuperseded: Option[String], isDraft: String, parentLsid: Option[String], synonymType: Option[Int],
@@ -69,6 +79,53 @@ case class DictionaryRelationshipDTO(id: Int, relationship: String, description:
 
 trait ScalaQuery {
 
+  /*
+   * case class NamesListPadding(id:Int, taxonRank:Option[String], scientificName:Option[String], padType:String)
+   */
+  
+  val NamesListPadding = new Table[NamesListPaddingDTO]("names_list_padding"){
+    def id = column[Int]("id")
+    def taxonRank = column[Option[String]]("taxon_rank")
+    def scientificName = column[Option[String]]("scientific_name")
+    def padType = column[String]("pad_type")
+    
+    def * = id~ taxonRank ~ scientificName ~ padType <> (NamesListPaddingDTO, NamesListPaddingDTO.unapply _)
+  }
+  
+  val NamesListName = new Table[NamesListNameDTO]("names_list_name"){
+    def listId = column[Int]("list_id")
+    def lsid = column[String]("lsid")
+    def acceptedLsid = column[Option[String]]("accepted_lsid")
+    def parentLsid = column[Option[String]]("parent_lsid")
+    def originalLsid = column[Option[String]]("original_lsid")
+    def scientificName = column[String]("scientific_name")
+    def publicationYear = column[Option[String]]("publication_year")
+    def genus = column[Option[String]]("genus")
+    def specificEpithet = column[Option[String]]("specific_epithet")
+    def infraSpecificEpithet = column[Option[String]]("infraspecific_ephithet")
+    def rank = column[Option[String]]("rank")
+    def author = column[Option[String]]("authorship")
+    def nomenCode = column[Option[String]]("nomen_code")
+    def taxonomicStatus = column[Option[String]]("taxonomic_status")
+    def nomenStatus = column[Option[String]]("nomenclatural_status")
+    def occurrenceStatus = column[Option[String]]("occurrence_status")
+    def genex = column[Option[String]]("genex")
+    def spex = column[Option[String]]("spex")
+    def inspex = column[Option[String]]("inspex")
+    def * = listId ~ lsid ~ acceptedLsid ~ parentLsid ~ originalLsid ~ scientificName ~ publicationYear ~ genus ~ 
+            specificEpithet ~ infraSpecificEpithet ~ rank ~ author ~ nomenCode ~ taxonomicStatus ~ nomenStatus ~ 
+            occurrenceStatus ~ genex ~ spex ~ inspex <> (NamesListNameDTO, NamesListNameDTO.unapply _)
+  }
+  
+  val NamesList = new Table[NamesListDTO]("names_list"){
+    def id = column[Option[Int]]("id")
+    def name = column[String]("name")
+    def organisation = column[Option[String]]("organisation")
+    def contact = column[Option[String]]("contact")
+    
+    def * = id ~ name ~ organisation ~ contact <> (NamesListDTO, NamesListDTO.unapply _)
+  }
+
   val ExtraNames = new Table[ExtraNamesDTO]("extra_names"){
     def lsid = column[String]("lsid")
     def scientificName=column[String]("scientific_name")
@@ -82,7 +139,7 @@ trait ScalaQuery {
   
   }
   
-  val ColSynonyms = new Table[ColSynonymsDTO]("col_synonyms") {
+  val ColSynonyms = new Table[ColSynonymsDTO]("ala_names.col_synonyms") {
     def id = column[Int]("id", O.PrimaryKey)
     def scientificName = column[String]("scientific_name")
     def author = column[String]("author")
@@ -119,13 +176,14 @@ trait ScalaQuery {
     def genex =column[Option[String]]("genex")
     def spex =column[Option[String]]("spex")
     def inspex =column[Option[String]]("inspex")
+    def unused = column[Option[String]]("unused")
 
-    def * = lsid ~ scientificName ~ title ~ uninomial ~ genus ~ specificEpithet ~ subspecificEpithet ~ infraspecificEpithet ~ hybridForm ~ authorship ~ authorYear ~ basionymAuthor ~ rank ~ nomenCode ~ phraseName ~ manuscriptName ~ genex ~ spex ~ inspex <> (TaxonNameDTO, TaxonNameDTO.unapply _)
+    def * = lsid ~ scientificName ~ title ~ uninomial ~ genus ~ specificEpithet ~ subspecificEpithet ~ infraspecificEpithet ~ hybridForm ~ authorship ~ authorYear ~ basionymAuthor ~ rank ~ nomenCode ~ phraseName ~ manuscriptName ~ genex ~ spex ~ inspex ~ unused <> (TaxonNameDTO, TaxonNameDTO.unapply _)
 
     //val columns = *.productIterator.toList.map(value => value.asInstanceOf[NamedColumn[_]].name)
   }
 
-  val ColConcepts = new Table[ColConceptsDTO]("col_concepts") {
+  val ColConcepts = new Table[ColConceptsDTO]("ala_names.col_concepts") {
     def taxonId = column[Int]("taxon_id", O.PrimaryKey)
     def lsid = column[String]("lsid")
     def scientificName = column[String]("scientific_name")
@@ -307,6 +365,75 @@ trait ScalaQuery {
     def * = taxonId ~ name ~ rank ~ parentId ~ lsid ~ numberOfChildren <> (ColTaxonTreeDTO, ColTaxonTreeDTO.unapply _)
   }
 
+}
+
+class NamesListPaddingJDBCDAO extends ScalaQuery {
+  def getAllNamesListPadding():List[NamesListPaddingDTO]={    
+    val q = for{
+      nlp <- NamesListPadding
+      _ <- Query orderBy (Ordering.Asc(Case when nlp.padType === "merge" then 9 when nlp.padType === "all" then 1 otherwise 5))
+      _ <- Query orderBy (Ordering.Asc(nlp.id))
+    } yield nlp
+    
+    println(q.selectStatement)
+    q.list()
+  }
+}
+
+class NamesListNameJDBCDAO extends ScalaQuery {
+  val nameAndListQuery = for {
+    Projection(listId, name) <- Parameters[Int, String]
+    nln <- NamesListName if nln.listId === listId && nln.scientificName === name
+  } yield nln
+  
+  val parentAndListQuery = for {
+    Projection(listId, parentId) <- Parameters[Int,String]
+    nln <- NamesListName if nln.listId === listId && nln.parentLsid === parentId
+  } yield nln
+  
+  def insert(name:NamesListNameDTO){
+    NamesListName.*.insert(name)
+  }
+  /**
+   * retrieves the names list name entry for the name that belongs to the specified list
+   */
+  def getByNameAndList(listId:Int, name:String): NamesListNameDTO ={
+    nameAndListQuery.first(listId, name)
+  }
+  
+  def getByParentAndList(listId:Int, parentId:String):List[NamesListNameDTO] = {
+    parentAndListQuery.list(listId, parentId)
+  }
+}
+
+class NamesListJDBCDAO extends ScalaQuery{
+  val listNameQuery = for {
+    name <- Parameters[String]
+    nl <- NamesList if nl.name === name
+  } yield nl
+  
+  val idQuery = for {
+    id <- Parameters[Int]
+    nl <- NamesList if nl.id === id
+  } yield nl
+  /**
+   * insert a newly created name list
+   */
+  def insert(namesList:NamesListDTO){
+    NamesList.*.insert(namesList)
+  }
+  /**
+   * get the names list with the supplied title
+   */
+  def getNamesList(title:String):Option[NamesListDTO] = {
+    listNameQuery.firstOption(title)
+  }
+  /**
+   * Retrieve the list by id
+   */
+  def getNamesListById(id:Int):Option[NamesListDTO] ={
+    idQuery.firstOption(id)
+  }
 }
 
 class ExtraNamesJDBCDAO extends ScalaQuery{
@@ -671,9 +798,8 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
     Projection(genex, spex, nom) <- Parameters[String, String,String]
     tn <- TaxonName if tn.genex === genex && tn.spex === spex && tn.inspex === null.asInstanceOf[String] && tn.nomenCode === nom
   } yield tn.lsid
-  
-  
-    def getMatchSoundExNomen(genex: String, spex: String, inex: Option[String],nom:String):List[String]={
+
+  def getMatchSoundExNomen(genex: String, spex: String, inex: Option[String],nom:String):List[String]={
     inex match {
       case None => soundExGSSourceQuery.list(genex, spex, nom)
       case _=> soundExGSISourceQuery.list(genex, spex, inex.get, nom)
@@ -727,7 +853,7 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
   def iterateOver(proc: ((TaxonNameDTO) => Boolean)) {
     //db withSession{
     val q1 = for {
-      tn <- TaxonName if tn.specificEpithet =!= "sp." //only discounting the sp. names
+      tn <- TaxonName if tn.specificEpithet =!= "sp." && tn.unused === null.asInstanceOf[String] //only discounting the sp. names
     } yield tn
 
     //q1.map
