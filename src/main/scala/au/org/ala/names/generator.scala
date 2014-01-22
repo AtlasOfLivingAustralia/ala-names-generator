@@ -8,6 +8,7 @@ import au.org.ala.util.OptionParser
 
 object NamesGenerator {
   val alaDAO = new AlaConceptsJDBCDAO
+  val asynDAO = new AlaSynonymJDBCDAO
   val mergeDAO = new MergeAlaConceptsJBBCDAO
   val tcDAO = new TaxonConceptJDBCDAO
   val tnDAO = new TaxonNameJDBCDAO
@@ -45,13 +46,15 @@ object NamesGenerator {
     var mergeTc=false
     var mergeClass=false
     var padUsingLists=false
+    var padType=""
+    var synSoundEx = false
     var dwcFile:Option[String] = None
     val parser = new OptionParser("ALA Name Generation Options") {
             opt("nsl","Preprocesses the NSL records so to determine classification depths",{lftRgtNSL=true})
             opt("init","Initialise the NSL taxon names to be used in ALA",{initNames = true})
             opt("apni","Initialise the APNI taxon names to be used in ALA",{addApni = true})
             opt("caab","Pads out AFD data with missing CAAB species",{padCaab=true})
-            opt("lists","Pads out the ala concepts with data in the names_list table based on configured ",{padUsingLists=true})
+            opt("lists","Pads out the ala concepts with data in the names_list table based on configured ",{s:String =>padUsingLists=true;padType=s})
             opt("col","Pads out AFD data with missing CoL species that have at least one occurrence in Australia",{padCol = true})
             opt("kingdoms","Adds missing CoL kingdoms ot the ALA names",{shouldAddMissingKingdoms = true})
             opt("class","Generate the final classification",{createClass = true})
@@ -60,6 +63,7 @@ object NamesGenerator {
             opt("clean", "Rename the old dumps so that the mysql dumps will not fail", {cleanOldDumps=true})
             opt("collft","Generates left rigth values for the Col table",{colLftRgt = true})
             opt("tnexp","Generates the sounds like expressions for the taxon names",{tnSoundEx=true})
+            opt("synexp","Generates the sounds like expressions for the ala-synonyms",{synSoundEx=true})
             opt("merge","Merge the remaining COL concepts into the ALA concepts - allowing original to remain separate" , {mergeTc=true})
             opt("mergecl","Create the merged classification" , {mergeClass=true})
             opt("dwc","a dwc file to load in the names list tables - used to pad out NSL", {s:String => dwcFile=Some(s)})
@@ -85,6 +89,9 @@ object NamesGenerator {
               initialiseAlaConcept(true)
               fillMissingParents()
             }
+            if(all || most || synSoundEx){
+              generateSynonymSoundEx()
+            }
             if(all || most || addApni){
               stopInit = false
               initialiseApniConcepts()
@@ -92,14 +99,23 @@ object NamesGenerator {
             if(all || most || padCaab){
               padAFDCaab()
             }
-            if(all || padUsingLists){
-              padUsingNamesLists()
+            if(all || most|| padUsingLists){
+              stopInit = false
+              if(!(all || most)){
+                padUsingNamesLists(padType)
+              } else{
+                padUsingNamesLists("all")
+                stopInit = false
+                padUsingNamesLists("merge")
+              }
             }
             if(all || most || padCol){
               padAFDCol()
             }
-            if(all || most || shouldAddMissingKingdoms)
+            if(shouldAddMissingKingdoms){
+              //NQ: This is no longer included as default because we have generic method for performing this in names lists
               addMissingColKingdoms()
+            }
             if(all || most || createClass)
               generateClassification(true, classDAO)
             if(all || most || cleanOldDumps)
@@ -110,21 +126,60 @@ object NamesGenerator {
           parser.showUsage
         println("Ending " + new java.util.Date)
   }
-  
-  def padUsingNamesLists(){
+  def generateSynonymSoundEx(){
+    println("Generating the sound ex for the NSL synonyms")
+    val queue = new ArrayBlockingQueue[AlaSynonymDTO](500)
+    val arrayBuf = new ArrayBuffer[Thread]()
+    var i = 0
+    while (i < 10) {
+      val t = new Thread(new GenericQueueThread[AlaSynonymDTO](queue, i,{syn => {
+        //get the taxon name
+        //println(syn)
+        val tn =tnDAO.getByLsid(syn.nameLsid.getOrElse(""))
+        if(tn.isDefined){
+          val(genex, spex, inspex) = generateSoundExs(tn.get)
+          if(genex.isDefined){
+            //we need to update the sounds like expressions
+            asynDAO.updateSoundEx(syn.lsid, genex, spex,inspex)
+          }
+        }
+      } 
+      })
+      )
+      t.start
+      arrayBuf += t
+      i += 1
+    }
+    
+    asynDAO.iterateOverTN({item=>{
+      while (queue.size >= 499) {
+        Thread.sleep(50)
+      }
+      queue.add(item)
+      true
+    }})
+    
+    stopInit = true
+    arrayBuf.foreach(t => t.join)
+  }
+  /**
+   * Pads the NSL with the lists that have been loaded 
+   */
+  def padUsingNamesLists(padType:String){
     //get all the names list merge items
-    val list = padDAO.getAllNamesListPadding()
+    val list = padDAO.getListsByPadType(padType)
     //create the array thread queue stuff
     val queue = new ArrayBlockingQueue[NamesListPaddingDTO](30)
     val arrayBuf = new ArrayBuffer[Thread]()
     var i = 0
     while (i < 10) {
       val t = new Thread(new GenericQueueThread[NamesListPaddingDTO](queue, i,{pad => {
-        pad.padType match{
-          case "all" => performPadAll(pad)
-          case "merge" =>performPadMerge(pad)
-          case _ => println("Unsupported pad type " + pad.padType)
-        }
+        performPadList(pad)
+//        pad.padType match{
+//          case "all" => performPadList(pad)
+//          case "merge" =>//performPadList(pad)
+//          case _ => println("Unsupported pad type " + pad.padType)
+//        }
       }}))
       t.start
       arrayBuf += t
@@ -139,12 +194,15 @@ object NamesGenerator {
     })
     stopInit = true
     arrayBuf.foreach(t => t.join)
+    //now add all the synonyms for the processed lists items
+    nlnDAO.addSynonymsForPadType(padType)
+    nlnDAO.updateExcludedStatus()
   }
   /**
    * Adds all the supplied concepts without checking for clashes.
    */
-  def performPadAll(nlp:NamesListPaddingDTO){
-    println(new java.util.Date() + " Starting to pad all for " + nlp)
+  def performPadList(nlp:NamesListPaddingDTO){
+    println(new java.util.Date() + " Starting to pad for " + nlp)
     //get the list details
     val nl = nlDAO.getNamesListById(nlp.id).get
     val src = Some(nl.name)
@@ -155,8 +213,10 @@ object NamesGenerator {
       println(new java.util.Date() + " List root item " + rootNameListItem)
       //obtain the NSL concept for the supplied name
       val nslRootItem = tnDAO.getTaxonNameIfIncluded(nlp.scientificName.get, rootNameListItem.nomenCode.getOrElse("Zoological"))
+      //if the nslRootItem is empty need to check if one of the other lists provided a concept for this
+      val acceptedListItem = nlnDAO.getNameListItemInALA(nlp.scientificName.get)
       println(new java.util.Date() + " NSL root item " + nslRootItem)
-      val parentLsid = if(nslRootItem.isDefined)alaDAO.getAlaConceptForName(nslRootItem.get.lsid).get.lsid else rootNameListItem.lsid
+      val parentLsid = if(nslRootItem.isDefined)alaDAO.getAlaConceptForName(nslRootItem.get.lsid).get.lsid else if (acceptedListItem.isDefined) acceptedListItem.get.lsid else rootNameListItem.lsid
       println(new java.util.Date() + " Parent LSID: "+ parentLsid)
       //add the root object if necessary
       if(parentLsid == rootNameListItem.lsid){
@@ -175,26 +235,115 @@ object NamesGenerator {
         alaDAO.insertNewTerm(alac)
         
       }
-      //retrieve all the children for he names list root item
-      recursivelyAddChildrenAll(nlp.id,rootNameListItem.lsid, parentLsid, src)
-    }
-  }
-  def recursivelyAddChildrenAll(listId:Int,listParentLsid:String, alaParentLsid:String, src:Option[String]){
-    //get the list of children for the supplied parent
-    nlnDAO.getByParentAndList(listId, listParentLsid).foreach{child =>
-        //add the child
-        val rank = Ranks.matchTerm(child.rank.getOrElse(""), child.nomenCode.getOrElse("Zoological"));
+      //retrieve all the children for he names list root item      
+      recursivelyAddChildrenAll(nlp.id,rootNameListItem.lsid, parentLsid, src,if(nlp.padType=="all"){name =>processListAll(name)} else{name => processListMerge(name)})
+    } else{
+      //we need to add all the entries that are floating at the supplied level that are NOT synonyms
+      val floating = nlnDAO.getByListAndEmpty(nlp.id, nlp.taxonRank.getOrElse(""))
+      floating.foreach{item =>
+        //add the item
+        //lookup the rank
+        val rank = Ranks.matchTerm(item.rank.getOrElse(""), item.nomenCode.getOrElse("Zoological"));
         //default rankId is unranked
         val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
-        val alaConcept = new AlaConceptsDTO(None, child.lsid, None, Some(alaParentLsid),None,None,None,rankId, None, child.genex, child.spex, child.inspex, src)
-        alaDAO.insertNewTerm(alaConcept)
-        //add its children
-        recursivelyAddChildrenAll(listId, child.lsid, child.lsid, src)
+        val alac = new AlaConceptsDTO(None, item.lsid, None, None,None,None,None,rankId,None,item.genex, item.spex, item.inspex, src)
+        alaDAO.insertNewTerm(alac)
+        recursivelyAddChildrenAll(nlp.id, item.lsid, item.lsid,src,{name => processListEmpty(name)})
+      }
     }
   }
-  def performPadMerge(nlp:NamesListPaddingDTO){
-    
+  def processListEmpty(name:NamesListNameDTO):(Boolean,String) ={
+    def alaConcept = alaDAO.getConceptByLsid(name.lsid)
+    def add = (name.acceptedLsid.isEmpty || name.acceptedLsid.get == name.lsid) && alaConcept.isEmpty
+    (add, null)
   }
+  /**
+   * Decides on whether or not an "all" names list name should be included.
+   */
+  def processListAll(name:NamesListNameDTO):(Boolean,String) ={
+    def add = name.acceptedLsid.isEmpty || name.acceptedLsid.get == name.lsid
+    (add, null)
+  }
+  /**
+   * Decides whether or not a "merge" names list name should be included. This is based on whether or not
+   * it already exists as an ala-concept.  "Merge" names should be processed after the "all" names.
+   */
+  def processListMerge(name:NamesListNameDTO):(Boolean, String)={
+    if(name.specificEpithet.isEmpty){
+        //for genus level or above attempt to locate an exact match already in the list
+        val nom = if(name.kingdom.getOrElse("") == "Animalia") "Zoological" else "Botanical"
+        //val tn = tnDAO.getTaxonNameIfIncluded(name.scientificName,nom)
+        val ala = alaDAO.getConceptBasedOnNameAndCode(name.scientificName, nom)
+        if(ala.isEmpty){
+          val nslsyn = asynDAO.getSynonymWithNameNomen(name.scientificName, nom)
+          if(nslsyn.isEmpty){
+            //check to see if it has been added as part of a previous list merge
+            val nln = nlnDAO.getNameListItemInALA(name.scientificName)
+            if(nln.isEmpty){
+              (true, null)
+            } else{
+              (false, nln.get.lsid)
+            }
+          } else{
+            (false, nslsyn.get.lsid)
+          }
+        } else{
+          (false, ala.get.lsid)
+        }
+    } else{
+      //species or infraspecies attempt to locate a match based on the sound expressions.
+      //look for accepted
+      val alsid = alaDAO.getMatchingSoundEx(name.genex.getOrElse(""), name.spex.getOrElse(""), name.inspex)
+      if(alsid.length>0){
+        (false, alsid.head)
+      } else{
+          //look for synonym
+        val slsid = asynDAO.getMatchingSoundEx(name.genex.getOrElse(""), name.spex.getOrElse(""), name.inspex)
+        if(slsid.length > 0){
+          (false, slsid.head)
+        } else{
+          (true, null)
+        }
+      }
+    }
+    
+  } 
+  val blacklisted = List("Incertae sedis","Not assigned")
+  def recursivelyAddChildrenAll(listId:Int,listParentLsid:String, alaParentLsid:String, src:Option[String], checkToAdd:(NamesListNameDTO => (Boolean,String))){
+    //get the list of children for the supplied parent
+    nlnDAO.getByParentAndList(listId, listParentLsid).foreach{child =>
+        var newParent = child.lsid
+        //add the child if it is not a blacklisted  name
+        if(!blacklisted.contains(child.scientificName)){
+          val rank = Ranks.matchTerm(child.rank.getOrElse(""), child.nomenCode.getOrElse("Zoological"));
+          //default rankId is unranked
+          val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+          val (shouldAdd, alaConceptLsid) = checkToAdd(child)
+          if(shouldAdd){
+            val alaConcept = new AlaConceptsDTO(None, child.lsid, None, Some(alaParentLsid),None,None,None,rankId, None, child.genex, child.spex, child.inspex, src)
+            alaDAO.insertNewTerm(alaConcept)            
+          } else if(alaConceptLsid != null){
+            newParent = alaConceptLsid
+          }
+        } else{
+          newParent = alaParentLsid
+        }
+        //add its children
+        recursivelyAddChildrenAll(listId,child.lsid, newParent, src, checkToAdd)
+        
+    }
+  }
+//  def performPadMerge(nlp:NamesListPaddingDTO){
+//    println(new java.util.Date() + " Starting to pad merge for " + nlp)
+//    //get the list details
+//    val nl = nlDAO.getNamesListById(nlp.id).get
+//    val src = Some(nl.name)
+//    //if scientific name exists 
+//    if(nlp.scientificName.isDefined){
+//      
+//    }
+//    
+//  }
   
   //TODO FIX the COL padding this is not looking at CAAB before adding a species...
   def padAFDCol(){
@@ -213,7 +362,7 @@ object NamesGenerator {
         val gse = getSoundEx(colConcept.get.genusName.get, false)
         val sse = getSoundEx(colConcept.get.speciesName.get, true)
         val source = Some("CoL")
-        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, None,"AFD") else List()
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchingSoundEx(gse.get, sse.get, None) else List()
 
         if(list.size>0 || alaDAO.isNameSynonyms(values(1)) || alaDAO.isNameAccepeted(values(1))){
           //do nothing
@@ -948,6 +1097,7 @@ object NamesGenerator {
     val rank = Ranks.matchTerm(rankString, "")
     //default rankId is unranked
     val rankId = if (!rank.isEmpty) Some(rank.get.getId) else Some(9999)
+    val source = if(lsid.contains(":afd")) Some("AFD") else if(lsid.contains(":apni")) Some("APC") else None
     //
     //val (accepted, synonymType) = getAcceptedDetails(tc, list.size ==1)
     //generate the soundex for the taxon name
@@ -956,7 +1106,7 @@ object NamesGenerator {
     //alaDAO.addConcept(tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), accepted, rankId, synonymType,gse,sse,ise)
 
     //println(rankId)
-    var alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), None, rankId, None, gse, sse, ise, None)
+    var alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), None, rankId, None, gse, sse, ise, source)
     //println(tc.lsid +" " + tc.nameLsid+ " " + tc.parentLsid + " " + parentSrc + " " + src + " " + accepted + " " + rankId + " " + synonymType+ " " + gse + " "+ sse +  " " + ise)
     //Some(alaConcept)
 
@@ -968,7 +1118,7 @@ object NamesGenerator {
         if (parConcept.isDefined) {
           //check to see if the return concept is the correct parent..
           if (parConcept.get.lsid != parent.lsid)
-            alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), Some(parConcept.get.lsid), parentSrc, Some(src), None, rankId, None, gse, sse, ise, None)
+            alaConcept = new AlaConceptsDTO(None, tc.lsid, Some(tc.nameLsid), Some(parConcept.get.lsid), parentSrc, Some(src), None, rankId, None, gse, sse, ise, source)
         } else {
           addMissingConcept(tc.parentLsid.get)
         }

@@ -20,16 +20,18 @@
     CREATE TABLE `names_list_name` (
     `list_id` int(11),    
     `lsid` varchar(255),
-    `accepted_lsid` varchar(256),
-    `parent_lsid` varchar(256),
-    `original_lsid` varchar(256),
-    `scientific_name` varchar(256),
+    `accepted_lsid` varchar(255),
+    `parent_lsid` varchar(255),
+    `original_lsid` varchar(255),
+    `scientific_name` varchar(255),
     `publication_year` varchar(20),
+    kingdom varchar(255),
+    family varchar(255),
     `genus` varchar(256),
-    `specific_epithet` varchar(256),
-    `infraspecific_ephithet` varchar(256) ,
+    `specific_epithet` varchar(255),
+    `infraspecific_ephithet` varchar(255) ,
     `rank` varchar(30),
-    `authorship` varchar(256),
+    `authorship` varchar(255),
     `nomen_code` varchar(30),
     `taxonomic_status` varchar(100) ,
     `nomenclatural_status` varchar(100) ,
@@ -39,6 +41,7 @@
     inspex varchar(255),
     PRIMARY KEY (list_id,`lsid`),
     index idx_nln_list_parent (list_id, parent_lsid),
+    index idx_nln_sci_name(scientific_name),
     CONSTRAINT `names_list_name_ibfk_1` FOREIGN KEY (`list_id`) REFERENCES `names_list` (`id`)
     ) DEFAULT CHARSET=utf8 ;
 
@@ -336,11 +339,15 @@
 		accepted_id int,
 		col_id int,
 		syn_type int,
+		genex varchar(255),
+    spex varchar(255),
+    inspex varchar(255),
 		index idx_ala_syn_name_lsid(name_lsid),
 		index idx_ala_syn_ac_lsid(accepted_lsid),
 		index idx_ala_syn_ac_id(accepted_id),
 		index idx_ala_syn_col_id(col_id),
-		index idx_ala_syn_lsid(lsid)
+		index idx_ala_syn_lsid(lsid),
+		index idx_asyn_sex(genex,spex,inspex)	
 	);
 	
 	DROP TABLE IF EXISTS merge_ala_synonyms;

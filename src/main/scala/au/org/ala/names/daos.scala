@@ -1,6 +1,7 @@
 package au.org.ala.names
 // Import the session management, including the implicit threadLocalSession
 import org.scalaquery.session._
+import org.scalaquery.simple.GetResult
 import org.scalaquery.session.Database.threadLocalSession
 import org.scalaquery.ql._
 import org.scalaquery.ql.TypeMapper._
@@ -36,13 +37,17 @@ case class NamesListNameDTO(list_id:Int, lsid:String, acceptedLsid:Option[String
             originalLsid:Option[String], scientificName:String, publicationYear:Option[String], genus:Option[String],
             specificEpithet:Option[String], infraSpecificEpithet:Option[String], rank:Option[String], author:Option[String],
             nomenCode:Option[String], taxonomicStatus:Option[String], nomenStatus:Option[String], occurrenceStatus:Option[String], 
-            genex:Option[String],spex:Option[String], inspex:Option[String])
+            genex:Option[String],spex:Option[String], inspex:Option[String],kingdom:Option[String],
+            family:Option[String])
 
 case class ExtraNamesDTO(lsid:String,scientificName:String, authority:String, commonName:String, family:String,genus:String,specificEpithet:String)
 
 case class AlaConceptsDTO(id: Option[Int], lsid: String, nameLsid: Option[String], parentLsid: Option[String],
   parentSrc: Option[Int], src: Option[Int], acceptedLsid: Option[String], rankId: Option[Int], synonymType: Option[Int], genusSoundEx: Option[String], speciesSoundEx: Option[String], infraSoundEx: Option[String],
   source: Option[String])
+
+case class AlaSynonymDTO(id: Option[Int], lsid:String, nameLsid:Option[String], acceptedLsid:String, synType:Option[Int], 
+            genex:Option[String],spex:Option[String], inspex:Option[String])
 
 case class AlaClassificationDTO(lsid: String, nameLsid: Option[String], parentLsid: Option[String], accepetedLsid: Option[String], rankId: Option[Int], rank: Option[String],
   klsid: Option[String], kname: Option[String],
@@ -80,8 +85,23 @@ case class DictionaryRelationshipDTO(id: Int, relationship: String, description:
 trait ScalaQuery {
 
   /*
-   * case class NamesListPadding(id:Int, taxonRank:Option[String], scientificName:Option[String], padType:String)
+   * case class AlaSynonymDTO(id: Option[Int], lsid:String, nameLsid:Option[String], acceptedLsid:String, synType:Option[Int], 
+            genex:Option[String],spex:Option[String], inspex:Option[String])
+
    */
+
+  val AlaSynonym = new Table[AlaSynonymDTO]("ala_synonyms"){
+    def id = column[Option[Int]]("id")
+    def lsid = column[String]("lsid")
+    def nameLsid = column[Option[String]]("name_lsid")
+    def acceptedLsid = column[String]("accepted_lsid")
+    def synType = column[Option[Int]]("syn_type")
+    def genex = column[Option[String]]("genex")
+    def spex = column[Option[String]]("spex")
+    def inspex = column[Option[String]]("inspex")
+    
+    def * = id ~ lsid ~ nameLsid ~ acceptedLsid ~ synType ~ genex ~ spex ~ inspex <> (AlaSynonymDTO, AlaSynonymDTO.unapply _)
+  }
   
   val NamesListPadding = new Table[NamesListPaddingDTO]("names_list_padding"){
     def id = column[Int]("id")
@@ -112,9 +132,11 @@ trait ScalaQuery {
     def genex = column[Option[String]]("genex")
     def spex = column[Option[String]]("spex")
     def inspex = column[Option[String]]("inspex")
+    def kingdom = column[Option[String]]("kingdom")
+    def family = column[Option[String]]("family")
     def * = listId ~ lsid ~ acceptedLsid ~ parentLsid ~ originalLsid ~ scientificName ~ publicationYear ~ genus ~ 
             specificEpithet ~ infraSpecificEpithet ~ rank ~ author ~ nomenCode ~ taxonomicStatus ~ nomenStatus ~ 
-            occurrenceStatus ~ genex ~ spex ~ inspex <> (NamesListNameDTO, NamesListNameDTO.unapply _)
+            occurrenceStatus ~ genex ~ spex ~ inspex ~ kingdom ~family <> (NamesListNameDTO, NamesListNameDTO.unapply _)
   }
   
   val NamesList = new Table[NamesListDTO]("names_list"){
@@ -139,7 +161,7 @@ trait ScalaQuery {
   
   }
   
-  val ColSynonyms = new Table[ColSynonymsDTO]("ala_names.col_synonyms") {
+  val ColSynonyms = new Table[ColSynonymsDTO]("col_synonyms") {
     def id = column[Int]("id", O.PrimaryKey)
     def scientificName = column[String]("scientific_name")
     def author = column[String]("author")
@@ -183,7 +205,7 @@ trait ScalaQuery {
     //val columns = *.productIterator.toList.map(value => value.asInstanceOf[NamedColumn[_]].name)
   }
 
-  val ColConcepts = new Table[ColConceptsDTO]("ala_names.col_concepts") {
+  val ColConcepts = new Table[ColConceptsDTO]("col_concepts") {
     def taxonId = column[Int]("taxon_id", O.PrimaryKey)
     def lsid = column[String]("lsid")
     def scientificName = column[String]("scientific_name")
@@ -368,6 +390,12 @@ trait ScalaQuery {
 }
 
 class NamesListPaddingJDBCDAO extends ScalaQuery {
+  def getListsByPadType(padType:String)={
+    val q = for{
+      nlp <- NamesListPadding if nlp.padType === padType
+    } yield nlp
+    q.list()
+  }
   def getAllNamesListPadding():List[NamesListPaddingDTO]={    
     val q = for{
       nlp <- NamesListPadding
@@ -391,6 +419,27 @@ class NamesListNameJDBCDAO extends ScalaQuery {
     nln <- NamesListName if nln.listId === listId && nln.parentLsid === parentId
   } yield nln
   
+  val acceptedNameListQuery = for {
+    name <- Parameters[String]
+    nln <- NamesListName if nln.scientificName === name
+    ac <- AlaConcepts if ac.lsid === nln.lsid
+  } yield nln
+  
+  val synonymNameListQuery = for {
+    name <- Parameters[String]
+    nln <- NamesListName if nln.scientificName === name
+    syn <- AlaSynonym if syn.lsid === nln.lsid
+  } yield nln
+  
+  def getNameListItemInALA(name:String):Option[NamesListNameDTO]={
+    val r1 =  acceptedNameListQuery(name).firstOption()
+    if(r1.isEmpty){
+      synonymNameListQuery(name).firstOption
+    } else{
+      r1
+    }
+  }
+  
   def insert(name:NamesListNameDTO){
     NamesListName.*.insert(name)
   }
@@ -398,11 +447,53 @@ class NamesListNameJDBCDAO extends ScalaQuery {
    * retrieves the names list name entry for the name that belongs to the specified list
    */
   def getByNameAndList(listId:Int, name:String): NamesListNameDTO ={
+    //println(nameAndListQuery.selectStatement)
     nameAndListQuery.first(listId, name)
   }
   
   def getByParentAndList(listId:Int, parentId:String):List[NamesListNameDTO] = {
     parentAndListQuery.list(listId, parentId)
+  }
+ 
+  
+  implicit val getNamesListNameDTOResult = GetResult(r => new NamesListNameDTO(r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<))
+//  implicit def rsToNameListNameDTO(rs: PositionedResult[NamesListNameDTO]):NamesListNameDTO ={ new NamesListNameDTO(rs.nextInt, rs.nextString,
+//                                                              rs.nextStringOption(),rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextString,rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextStringOption(),rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextStringOption(),rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextStringOption(),rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextStringOption(),rs.nextStringOption(),rs.nextStringOption(),
+//                                                              rs.nextStringOption())
+//  }
+  def getByListAndEmpty(listId:Int, emptyField:String):List[NamesListNameDTO] ={
+    val strQuery = """select list_id,lsid,accepted_lsid,parent_lsid, original_lsid,scientific_name,publication_year,genus,
+      specific_epithet, infraspecific_ephithet,rank,authorship, nomen_code,taxonomic_status,nomenclatural_status,
+      occurrence_status, genex, spex, inspex,kingdom, family from names_list_name where list_id=""" +listId+" and " + emptyField + " is null"
+    //query[Int,User]("select id, name from users where id = ?")
+    queryNA[NamesListNameDTO](strQuery).list
+    
+  }
+  val insertSynForPadType="""insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex from names_list_name nln 
+join dictionary_relationship dr on nln.taxonomic_status = dr.relationship and dr.description is null
+join names_list_padding nlp on nlp.id = nln.list_id 
+where nlp.pad_type=?"""
+  val insertSynonymStmt ="insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex from names_list_name nln "+
+                          "join dictionary_relationship dr on nln.taxonomic_status = dr.relationship and dr.description is null where nln.accepted_lsid= ?"
+  /**
+   * Add the synonyms for the supplied concepts to 
+   */
+  def addSynonymsFor(lsid:String){
+    update[(String)](insertSynonymStmt).first(lsid)
+  }
+  def addSynonymsForPadType(padType:String){
+    update[(String)](insertSynForPadType).first(padType)
+  }
+  
+  def updateExcludedStatus(){
+    updateNA("""update ala_concepts ac, names_list_name nln 
+            set ac.excluded='T'
+            where ac.lsid = nln.lsid and nln.occurrence_status in ('Excluded from Australian bryoflora','Occurrence in Australia doubtful','[Not in Ausfungi]','[Not in Australia]')""").first
   }
 }
 
@@ -777,7 +868,7 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
 
     
   //query to get a taxon name only if it has been included in the ala-concepts
-  val nameInConceptsQuery = for {
+  val nameInConceptsNomenQuery = for {
     Projection(genusName, nomen) <- Parameters[String, String]
     tn <- TaxonName if tn.scientificName === genusName && tn.nomenCode === nomen
     ac <- AlaConcepts if ac.nameLsid === tn.lsid
@@ -899,7 +990,7 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
   }
 
   def getTaxonNameIfIncluded(genusName: String, nomen: String): Option[TaxonNameDTO] = {
-    nameInConceptsQuery.firstOption(genusName, nomen)
+    nameInConceptsNomenQuery.firstOption(genusName, nomen)
   }
   //Only use this to get a taxon name that is identical at a rank family level or above.
   //def getIdenticalTaxonName(name:String, rank:String){
@@ -908,7 +999,7 @@ class TaxonNameJDBCDAO extends TaxonNameDAO with ScalaQuery {
 
   def getTaxonName(genusName: String, specificEpithet: Option[String], nomen: String): List[TaxonNameDTO] = {
     specificEpithet match {
-      case None => nameInConceptsQuery.list(genusName, nomen)
+      case None => nameInConceptsNomenQuery.list(genusName, nomen)
       case _ => specificNameInConceptsQuery.list(genusName, specificEpithet.get, nomen)
     }
   }
@@ -1121,6 +1212,66 @@ class MergeAlaConceptsJBBCDAO extends ScalaQuery{
     updateNA(query).first
   }
 }
+
+class AlaSynonymJDBCDAO extends ScalaQuery{
+  
+    //query to get an ala-synonym with the supplied name details.
+  val nameInSynonymNomenQuery = for {
+    Projection(genusName, nomen) <- Parameters[String, String]
+    tn <- TaxonName if tn.scientificName === genusName && tn.nomenCode === nomen
+    syn <- AlaSynonym if syn.nameLsid === tn.lsid
+  } yield syn
+  
+    val soundExGSIQuery = for {
+    Projection(genex, spex, inex) <- Parameters[String, String, String]
+    syn <- AlaSynonym if syn.genex === genex && syn.spex === spex && syn.inspex === inex
+  } yield syn.lsid
+
+  val soundExGSQuery = for {
+    Projection(genex, spex) <- Parameters[String, String]
+    syn <- AlaSynonym if syn.genex === genex && syn.spex === spex && syn.inspex === null.asInstanceOf[String]
+  } yield syn.lsid
+  
+  
+  val updateSoundExSQL="update ala_synonyms set genex= ?, spex=?, inspex=? where lsid=?"
+  val updateSoundGenSQL="update ala_synonyms set genex= ? where lsid=?"
+  val updateSoundSpSQL="update ala_synonyms set genex= ?, spex=? where lsid=?"
+  //val updateParentFromParentSQL = "update ala_concepts set parent_lsid = ? where parent_lsid =?"
+  def iterateOverTN(proc:(AlaSynonymDTO=>Boolean)){
+    val query = for {
+      syn <- AlaSynonym if syn.nameLsid =!= null.asInstanceOf[String]
+    } yield syn
+    println(query.selectStatement)
+    query.foreach(item => {proc(item)})
+  }
+  def updateSoundEx(lsid: String,genex:Option[String], spex:Option[String], inspex:Option[String]){
+    //update[(String, String)](updateParentFromParentSQL).first(acceptedLsid, lsid)
+    (genex,spex,inspex) match{
+      case it if it._1.isDefined && it._2.isDefined && it._3.isDefined => update[(String,String,String,String)](updateSoundExSQL).first(genex.get, spex.get, inspex.get, lsid)
+      case it if it._1.isDefined && it._2.isDefined && it._3.isEmpty => update[(String,String,String)](updateSoundSpSQL).first(genex.get, spex.get, lsid)
+      case it if it._1.isDefined && it._2.isEmpty && it._3.isEmpty => update[(String,String)](updateSoundGenSQL).first(genex.get,lsid)
+      case _ => println("Unhandled case: " + genex + " " + spex + " " + inspex )
+    }
+    
+  }
+  
+  def getSynonymWithNameNomen(name:String, nomen:String)={
+   nameInSynonymNomenQuery(name, nomen).firstOption()
+  }
+  
+   
+  /**
+   * Retrieves ALA Synonyms that have the sound expression as supplied. Allows us to find concepts that 
+   * may be identical to each other based on misspelling and/or incorrect masculine etc endings.
+   */
+  def getMatchingSoundEx(genex: String, spex: String, inex: Option[String]): List[String] = {
+    inex match {
+      case None => soundExGSQuery.list(genex, spex)
+      case _ => soundExGSIQuery.list(genex, spex, inex.get)
+    }
+  }
+}
+
 //USED
 class AlaConceptsJDBCDAO extends ScalaQuery {
 
@@ -1188,6 +1339,14 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     ac <- AlaConcepts if ac.nameLsid === tn.lsid
   } yield ac
     
+  def getConceptByLsid(lsid:String):Option[AlaConceptsDTO]={
+    val q =for {
+      ac <- AlaConcepts if ac.lsid === lsid
+    } yield ac
+    
+    q.firstOption()
+  }
+  
   def getConceptBasedOnNameAndCode(genusName:String, nomen:String):Option[AlaConceptsDTO]={
     nameInConceptsQuery.firstOption(genusName, nomen)
   }
@@ -1203,7 +1362,7 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
   def addExcludedConcepts(){
     //update the AFD concepts as excluded
     updateNA("""update ala_concepts ac, nsl_taxon_concept nc 
-              set ac.excluded='Y'
+              set ac.excluded='T'
               where ac.name_lsid=nc.name_lsid and nc.excluded='Y'""").first
     //add the AFD excluded names as children of the concepts that they are excluded from
     updateNA("""insert into ala_concepts(lsid, name_lsid, parent_lsid,rank_id,source,excluded) 
@@ -1410,6 +1569,7 @@ where c.family_lsid =?  and c.lsid <> c.family_lsid and ac.lsid is null and c.ns
     //add the Viruses
 
     //There are 2 CoL families in different areas of the tree that share an LSID so concat the id as well for the following id's: (2348007,2349727)
+    //old kingdom filter no longer necessary due to new names lists for fungi('Viruses','Chromista','Protozoa','Bacteria','Fungi')
     updateNA("""insert into ala_concepts select distinct null,null, case when c.taxon_id in (2348007,2349727) then concat_ws('|',c.lsid,c.taxon_id) else c.lsid end,null,case when p.taxon_id in (2348007,2349727) then concat_ws('|',p.lsid,p.taxon_id) else p.lsid end,90,110,null,
 case c.rank when 'kingdom' then 1000 when 'phylum' then 2000 when 'class' then 3000 when 'order' then 4000 
 when 'family' then 5000 when 'genus' then 6000 when 'species' then 7000 

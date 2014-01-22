@@ -41,7 +41,7 @@ object DwCANamesLoader {
     val acceptedLsid = star.core.value(org.gbif.dwc.terms.DwcTerm.acceptedNameUsageID)
     val parentLsid = star.core.value(org.gbif.dwc.terms.DwcTerm.parentNameUsageID)
     val originalLsid = star.core.value(org.gbif.dwc.terms.DwcTerm.originalNameUsageID)
-    val scientificName = stripStrayQuotes(star.core.value(org.gbif.dwc.terms.DwcTerm.scientificName))
+    val scientificName = getCanonicalForm(stripStrayQuotes(star.core.value(org.gbif.dwc.terms.DwcTerm.scientificName)))
     val publicationYear = star.core.value(org.gbif.dwc.terms.DwcTerm.namePublishedInYear)
     val genus = star.core.value(org.gbif.dwc.terms.DwcTerm.genus)
     val specificEpithet = star.core.value(org.gbif.dwc.terms.DwcTerm.specificEpithet)
@@ -49,12 +49,14 @@ object DwCANamesLoader {
     val rank = star.core.value(org.gbif.dwc.terms.DwcTerm.taxonRank)
     val author = star.core.value(org.gbif.dwc.terms.DwcTerm.scientificNameAuthorship)
     val nomenCode = star.core.value(org.gbif.dwc.terms.DwcTerm.nomenclaturalCode)
-    val taxonomicStatus = star.core.value(org.gbif.dwc.terms.DwcTerm.taxonomicStatus)
+    val taxonomicStatus = stripStrayQuotes(star.core.value(org.gbif.dwc.terms.DwcTerm.taxonomicStatus))
     val nomenStatus = star.core.value(org.gbif.dwc.terms.DwcTerm.nomenclaturalStatus)
-    val occurrenceStatus = star.core.value(org.gbif.dwc.terms.DwcTerm.occurrenceStatus)
+    val occurrenceStatus = stripStrayQuotes(star.core.value(org.gbif.dwc.terms.DwcTerm.occurrenceStatus))
     val genex = NamesGenerator.getSoundEx(genus, false)
     val spex = NamesGenerator.getSoundEx(specificEpithet, true)
     val inspex = NamesGenerator.getSoundEx(infraspecificEpithet, true)
+    val kingdom = star.core.value(org.gbif.dwc.terms.DwcTerm.kingdom)
+    val family = star.core.value(org.gbif.dwc.terms.DwcTerm.family)
 
     val name = new NamesListNameDTO(id, lsid,
         convertToOption(acceptedLsid),convertToOption(parentLsid),
@@ -63,11 +65,26 @@ object DwCANamesLoader {
         convertToOption(specificEpithet), convertToOption(infraspecificEpithet),
         convertToOption(rank), convertToOption(author), convertToOption(nomenCode), 
         convertToOption(taxonomicStatus), convertToOption(nomenStatus),
-        convertToOption(occurrenceStatus),genex, spex, inspex)
+        convertToOption(occurrenceStatus),genex, spex, inspex, convertToOption(kingdom), convertToOption(family))
     namesListNameDAO.insert(name)
     if(processedCount%1000 == 0){
       println("Loaded " + processedCount + " - " + new java.util.Date())
     }
+  }
+  val parser = new au.org.ala.data.util.PhraseNameParser
+  def getCanonicalForm(value:String):String ={
+    //parse the name 
+    try{
+    val cn = parser.parse(value)
+    if(cn.`type` != org.gbif.ecat.voc.NameType.doubtful && cn.`type` != org.gbif.ecat.voc.NameType.hybrid){
+      cn.canonicalName()
+    } else{
+        value
+    }
+    } catch{
+      case e:Exception => return value
+    }
+    
   }
   def convertToOption(value:String):Option[String] = if(value == null)None else Some(value.trim)
   
