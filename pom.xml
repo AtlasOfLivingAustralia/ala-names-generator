@@ -38,7 +38,17 @@
 	</pluginRepositories>
 
 	<dependencies>
-
+       <dependency>
+            <groupId>org.gbif</groupId>
+            <artifactId>dwca-reader</artifactId>
+            <version>1.14-SNAPSHOT</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-io</groupId>
+                    <artifactId>commons-io</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 		<!-- ALA Name matching - homonym detection -->
 		<dependency>
 			<groupId>au.org.ala</groupId>
