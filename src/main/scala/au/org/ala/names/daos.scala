@@ -431,6 +431,12 @@ class NamesListNameJDBCDAO extends ScalaQuery {
     syn <- AlaSynonym if syn.lsid === nln.lsid
   } yield nln
   
+  val lsidSourceQuery = for {
+    Projection(lsid, listName) <- Parameters[String,String]
+    nln <- NamesListName if nln.lsid === lsid
+    nl <- NamesList if nl.name === listName && nl.id === nln.listId
+  } yield nln
+  
   def getNameListItemInALA(name:String):Option[NamesListNameDTO]={
     val r1 =  acceptedNameListQuery(name).firstOption()
     if(r1.isEmpty){
@@ -454,6 +460,11 @@ class NamesListNameJDBCDAO extends ScalaQuery {
   def getByParentAndList(listId:Int, parentId:String):List[NamesListNameDTO] = {
     parentAndListQuery.list(listId, parentId)
   }
+  
+  def getByLsidAndListSource(lsid:String, listName:String):Option[NamesListNameDTO] ={
+    //println(lsidSourceQuery.selectStatement + " " + lsid + " " + listName)
+    lsidSourceQuery.firstOption(lsid, listName)
+  }
  
   
   implicit val getNamesListNameDTOResult = GetResult(r => new NamesListNameDTO(r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<, r<<))
@@ -469,16 +480,16 @@ class NamesListNameJDBCDAO extends ScalaQuery {
   def getByListAndEmpty(listId:Int, emptyField:String):List[NamesListNameDTO] ={
     val strQuery = """select list_id,lsid,accepted_lsid,parent_lsid, original_lsid,scientific_name,publication_year,genus,
       specific_epithet, infraspecific_ephithet,rank,authorship, nomen_code,taxonomic_status,nomenclatural_status,
-      occurrence_status, genex, spex, inspex,kingdom, family from names_list_name where list_id=""" +listId+" and " + emptyField + " is null"
+      occurrence_status, genex, spex, inspex,kingdom, family from names_list_name where list_id=""" +listId+" and rank !='life' and parent_lsid is null and " + emptyField + " is null"
     //query[Int,User]("select id, name from users where id = ?")
     queryNA[NamesListNameDTO](strQuery).list
     
   }
-  val insertSynForPadType="""insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex from names_list_name nln 
+  val insertSynForPadType="""insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex,list_id) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex,nln.list_id from names_list_name nln 
 join dictionary_relationship dr on nln.taxonomic_status = dr.relationship and dr.description is null
 join names_list_padding nlp on nlp.id = nln.list_id 
 where nlp.pad_type=?"""
-  val insertSynonymStmt ="insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex from names_list_name nln "+
+  val insertSynonymStmt ="insert into ala_synonyms(lsid, accepted_lsid,syn_type,genex,spex,inspex,list_id) select nln.lsid,nln.accepted_lsid,dr.id,nln.genex,nln.spex,nln.inspex,nln.list_id from names_list_name nln "+
                           "join dictionary_relationship dr on nln.taxonomic_status = dr.relationship and dr.description is null where nln.accepted_lsid= ?"
   /**
    * Add the synonyms for the supplied concepts to 
@@ -1720,6 +1731,7 @@ where ac1.parent_lsid is not null and ac2.lsid is null and r.relationship = 'inc
   def getRootConcepts(): List[AlaConceptsDTO] = {
     val q1 = (for {
       ac <- AlaConcepts if ac.parentLsid === null.asInstanceOf[String] // && ac.acceptedLsid =!= null.asInstanceOf[String]
+      _ <- Query orderBy (Ordering.Desc(ac.id))
     } yield ac)
     println(q1.selectStatement)
     q1.list

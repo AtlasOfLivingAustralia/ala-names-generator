@@ -267,6 +267,7 @@ object NamesGenerator {
   /**
    * Decides whether or not a "merge" names list name should be included. This is based on whether or not
    * it already exists as an ala-concept.  "Merge" names should be processed after the "all" names.
+   * TODO: Check to see if one of the list supplied synonyms for name is in the ALA list - not done ATM becuase we are not considering CoL syonyms
    */
   def processListMerge(name:NamesListNameDTO):(Boolean, String)={
     if(name.specificEpithet.isEmpty){
@@ -311,7 +312,7 @@ object NamesGenerator {
   val blacklisted = List("Incertae sedis","Not assigned")
   def recursivelyAddChildrenAll(listId:Int,listParentLsid:String, alaParentLsid:String, src:Option[String], checkToAdd:(NamesListNameDTO => (Boolean,String))){
     //get the list of children for the supplied parent
-    nlnDAO.getByParentAndList(listId, listParentLsid).foreach{child =>
+    nlnDAO.getByParentAndList(listId, listParentLsid).foreach{child =>        
         var newParent = child.lsid
         //add the child if it is not a blacklisted  name
         if(!blacklisted.contains(child.scientificName)){
@@ -1429,31 +1430,31 @@ object NamesGenerator {
     alaConcept.rankId match {
       case Some(1000) => {
         map += ("klsid" -> alaConcept.lsid)
-        map += ("kname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("kname" -> getName(alaConcept.nameLsid, alaConcept.lsid, alaConcept.source))
       }
       case Some(2000) => {
         map += ("plsid" -> alaConcept.lsid)
-        map += ("pname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("pname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case Some(3000) => {
         map += ("clsid" -> alaConcept.lsid)
-        map += ("cname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("cname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case Some(4000) => {
         map += ("olsid" -> alaConcept.lsid)
-        map += ("oname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("oname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case Some(5000) => {
         map += ("flsid" -> alaConcept.lsid)
-        map += ("fname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("fname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case Some(6000) => {
         map += ("glsid" -> alaConcept.lsid)
-        map += ("gname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("gname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case Some(7000) => {
         map += ("slsid" -> alaConcept.lsid)
-        map += ("sname" -> getName(alaConcept.nameLsid, alaConcept.lsid))
+        map += ("sname" -> getName(alaConcept.nameLsid, alaConcept.lsid,alaConcept.source))
       }
       case _ =>
     }
@@ -1500,7 +1501,7 @@ object NamesGenerator {
   /**
    * Retrives the name of a concept to be used in the denormalised major ranks.
    */
-  def getName(nameLsid: Option[String], lsid: String): String = {
+  def getName(nameLsid: Option[String], lsid: String, source:Option[String]): String = {
 
     if (nameLsid.isDefined) {
       val name = tnDAO.getByLsid(nameLsid.get)
@@ -1508,14 +1509,23 @@ object NamesGenerator {
         name.get.scientificName
       } else
         ""
-    } else {
-      //COL term lookup
-      val name = colTcDAO.getConcept(lsid)
-      if (name.isDefined) {
+    } else{
+      //lookup in the names list names
+      val name =nlnDAO.getByLsidAndListSource(lsid, source.getOrElse(""))
+      if(name.isDefined){
         name.get.scientificName
-      } else
+      } else{
         ""
+      }
     }
+//    } else {
+//      //COL term lookup
+//      val name = colTcDAO.getConcept(lsid)
+//      if (name.isDefined) {
+//        name.get.scientificName
+//      } else
+//        ""
+//    }
   }
 
 }
