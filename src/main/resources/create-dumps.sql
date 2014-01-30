@@ -31,6 +31,7 @@
  -- Query OK, 224482 rows affected (7 min 17.85 sec) 
  -- Query OK, 224482 rows affected (26 min 29.99 sec)
  -- Query OK, 338021 rows affected (11 min 17.81 sec)
+ -- Query OK, 343324 rows affected (5 min 28.87 sec)
     select 'id','parent_id','lsid','parent_lsid','accepted_lsid','name_lsid','scientific_name','genus_or_higher','specific_epithet','infraspecific_epithet',
 	'authorship','author_year','rank_id', 'rank','lft','rgt','kingdom_lsid','kingdom_name','phylum_lsid', 'phylum_name','class_lsid','class_name','order_lsid','order_name','family_lsid','family_name',
 	'genus_lsid','genus_name','species_lsid','species_name','source','parent_src','synonym_type_id','synonym_relationship','synonym_description','raw_rank','is_excluded','col_id'
@@ -93,6 +94,7 @@
 	
 -- DUMP the identifiers
 -- Query OK, 435585 rows affected (4 min 54.85 sec)
+-- Query OK, 522522 rows affected (3 min 5.76 sec)
 	select 'name_lsid','lsid','accepted_lsid'
 	UNION
 	select ac.name_lsid, ac.lsid, tc.lsid
@@ -104,6 +106,7 @@
 	from ala_synonyms asyn join taxon_concept tc on asyn.name_lsid = tc.name_lsid where asyn.lsid <> tc.lsid;
 	
 -- DUMP the common names
+-- Query OK, 23745 rows affected (7.29 sec)
 	select 'LSID', 'URI', 'Name','TaxonConcept', 'PublicationLSID','isPreferredName'
 	UNION
 	select r.to_lsid, '',tn.scientific_name, r.from_lsid,'',''	
@@ -116,7 +119,7 @@
 	where common_name is not null and common_name <>'';
 	
 	-- DUMP the potential species homonyms
-
+-- Query OK, 372 rows affected (4 min 53.06 sec)
 	select distinct kname, pname, cname, oname, fname, gname, tn1.scientific_name,tn1.lsid, tn1.authorship, tn1.author_year,ac1.source
 	INTO OUTFILE '/data/bie-staging/ala-names/ala-species-homonyms-2014.txt'
 	from ala_concepts ac1 join taxon_name tn1 on ac1.name_lsid = tn1.lsid join taxon_name tn2 on tn1.scientific_name = tn2.scientific_name

@@ -285,6 +285,7 @@
 		source varchar(10),
 		excluded char(1),
 		
+		
 		unique index idx_ac_lsid(lsid),
 		index idx_ala_name_lsid(name_lsid),
 		index idx_ala_parent(parent_lsid),
@@ -294,6 +295,7 @@
 		index idx_i_sound_ex(insp_sound_ex),
 		index idx_ac_col_id(col_id),
 		index idx_ala_source(source)
+		
 	);
 		DROP TABLE IF EXISTS merge_ala_concepts;
 		
@@ -342,12 +344,14 @@
 		genex varchar(255),
     spex varchar(255),
     inspex varchar(255),
+    list_id int,
 		index idx_ala_syn_name_lsid(name_lsid),
 		index idx_ala_syn_ac_lsid(accepted_lsid),
 		index idx_ala_syn_ac_id(accepted_id),
 		index idx_ala_syn_col_id(col_id),
 		index idx_ala_syn_lsid(lsid),
-		index idx_asyn_sex(genex,spex,inspex)	
+		index idx_asyn_sex(genex,spex,inspex),
+		index idx_syn_list(list,id)
 	);
 	
 	DROP TABLE IF EXISTS merge_ala_synonyms;
@@ -397,14 +401,17 @@
 		parent_id int,
 		excluded char(1),
 		col_id int,
-		source varchar(4),
+		source varchar(10),
+		list_id int,
 		primary key (lsid),
 		index ix_ala_cl_rank_id(rank_id),
 		index ix_ala_cl_accepted(accepted_lsid),
 		index ix_ala_cl_kingdom_family(kname, fname),
 		index idx_cl_name_lsid(name_lsid),
 		index idx_cl_lft(lft),
-		index idx_cl_rgt(rgt)
+		index idx_cl_rgt(rgt),
+		index idx_ala_list(list_id),
+		index idx_cl_source(source)
 	);
 	
 	
