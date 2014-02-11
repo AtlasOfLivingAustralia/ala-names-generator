@@ -79,7 +79,7 @@
 	select 'id','lsid', 'name_lsid', 'accepted_lsid','accepted_id','scientific_name', 'author', 'year', 'col_id', 'syn_type', 'relatinoship', 'description'
 	UNION
 	select alas.id + (select max(id) from ala_concepts), alas.lsid,alas.name_lsid, alas.accepted_lsid, alas.accepted_id,
-    case when tn.scientific_name is not null and tn.scientific_name <> ''  then convert(tn.scientific_name using utf8)  when nln.scientific_name is not null then convert(nln.scientific_name using utf8)  else ""end, 
+    case when tn.title is not null and tn.scientific_name <> ''  then convert(tn.title using utf8)  when nln.scientific_name is not null then convert(nln.scientific_name using utf8)  else ""end, 
     case when tn.authorship is not null and alas.lsid like 'urn:lsid:biodiversity.org.au:afd.%' then convert(tn.authorship using utf8) when tn.authorship is not null and tn.authorship <>'' and alas.lsid like 'urn:lsid:biodiversity.org.au:apni%' then convert(tn.authorship using utf8) when nln.authorship is not null then convert(nln.authorship using utf8) else "" end,
     case when tn.author_year is not null then convert(tn.author_year using utf8) when nln. publication_year is not null then convert(nln.publication_year using utf8) else "" end,
     IFNULL(alas.col_id,''), alas.syn_type, IFNULL(dr.relationship,''), IFNULL(dr.description, '')
