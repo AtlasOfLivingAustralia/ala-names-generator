@@ -14,7 +14,7 @@
 	
 	update ala_concepts ac join taxon_concept tc on ac.lsid = tc.lsid
 	set source = 'APC'
-	where source is null and tc.lsid like '%au:apni%' and tc.is_accepted='Y'
+	where source is null and tc.lsid like '%au:apni%' and tc.is_accepted='Y';
 	-- 2014-01-28: Query OK, 70 rows affected (16.59 sec)
 	update ala_classification cl join extra_names en on cl.glsid=en.lsid set cl.gname = en.scientific_name;
 	
