@@ -72,6 +72,7 @@ object NamesGenerator {
         if(parser.parse(args)){
             
           db withSession {
+          
             if(dwcFile.isDefined){
               DwCANamesLoader.loadArchive(dwcFile.get)
             }
@@ -92,10 +93,6 @@ object NamesGenerator {
             if(all || most || synSoundEx){
               generateSynonymSoundEx()
             }
-            if(all || most || addApni){
-              stopInit = false
-              initialiseApniConcepts()
-            }
             if(all || most || padCaab){
               padAFDCaab()
             }
@@ -108,6 +105,11 @@ object NamesGenerator {
                 stopInit = false
                 padUsingNamesLists("merge")
               }
+            }
+            //APNI needs to be added as a last resort, and only if none of the other lists contain sounds like expressions
+            if(all || most || addApni){
+              stopInit = false
+              initialiseApniConcepts()
             }
             if(all || most || padCol){
               padAFDCol()
@@ -477,7 +479,7 @@ object NamesGenerator {
         val values = line.split("\t")
         val gse = getSoundEx(values(5), false)
         val sse = getSoundEx(values(6), true)
-        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, None,"AFD") else List()
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, None,List("AFD")) else List()
 
         if(list.size>0 || alaDAO.isNameSynonyms(values(1)) || alaDAO.isNameAccepeted(values(1))){
           //do nothing
@@ -1158,10 +1160,12 @@ object NamesGenerator {
       val taxonName = tnDAO.getByLsid(nameLsid)
       if (taxonName.isDefined) {
         val (gse, sse, ise) = generateSoundExs(taxonName.get)
-        //now check to see if there is an existing APC concept with the same sound ex
-        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, ise,"APC") else List()
+        //now check to see if there is an existing non-AFD concept with the same sound ex
+        val list = if(gse.isDefined && sse.isDefined) alaDAO.getMatchSoundExSource(gse.get, sse.get, ise,List("APC", "AusMoss","AusFungi")) else List()
+        //also check to see if a synonym exists
+        val synList = asynDAO.getMatchingSoundEx(gse.getOrElse(""), sse.getOrElse(""), ise)
        
-        if (list.size > 0) {
+        if (list.size > 0 || synList.size>0) {
           println("Unable to add " + nameLsid + " " + taxonName.get.scientificName + " soudexs: " + list)
         } else {
           //add the apni concept

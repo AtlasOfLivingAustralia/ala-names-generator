@@ -1295,16 +1295,6 @@ class AlaConceptsJDBCDAO extends ScalaQuery {
     Projection(genex, spex) <- Parameters[String, String]
     ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === null.asInstanceOf[String]
   } yield ac.lsid
-
-  val soundExGSISourceQuery = for {
-    Projection(genex, spex, inex, source) <- Parameters[String, String, String,String]
-    ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === inex && ac.source === source
-  } yield ac.lsid
-
-  val soundExGSSourceQuery = for {
-    Projection(genex, spex, source) <- Parameters[String, String,String]
-    ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === null.asInstanceOf[String] && ac.source === source
-  } yield ac.lsid
   
   val soundExParentSIQuery = for {
     Projection(parentId, spex, inex) <- Parameters[String, String, String]
@@ -1437,11 +1427,17 @@ where tc.name_lsid like '%apni%' and syn.lsid is null and ac.lsid is null and tc
       case _ => soundExGSIQuery.list(genex, spex, inex.get)
     }
   }
-  def getMatchSoundExSource(genex: String, spex: String, inex: Option[String],source:String):List[String]={
-    inex match {
-      case None => soundExGSSourceQuery.list(genex, spex, source)
-      case _=> soundExGSISourceQuery.list(genex, spex, inex.get, source)
-    }
+  def getMatchSoundExSource(genex: String, spex: String, inex: Option[String],source:List[String]):List[String]={
+    val q = if(inex.isDefined){
+        for {
+            ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === inex.get && ac.source.inSet(source) 
+        } yield ac.lsid 
+    } else{
+      for {
+            ac <- AlaConcepts if ac.genusSoundEx === genex && ac.speciesSoundEx === spex && ac.infraSoundEx === null.asInstanceOf[String] && ac.source.inSet(source) 
+        } yield ac.lsid
+    }   
+    q.list
   }
   //None,tc.lsid, Some(tc.nameLsid), tc.parentLsid, parentSrc, Some(src), accepted, rankId, synonymType, gse,sse,ise
   val addConceptSQL = "insert into ala_concepts(lsid,name_lsid,parent_lsid,parent_src,src,accepted_lsid, rank_id, synonym_type, genus_sound_ex,sp_sound_ex, insp_sound_ex) values (?,?,?,?,?,?,?,?,?,?,?)"
