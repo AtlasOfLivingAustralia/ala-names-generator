@@ -96,13 +96,6 @@
 			<version>5.1.6</version>
 		</dependency>
 
-		<!-- Dependencies for the NSL taxamatch -->
-		<dependency>
-			<groupId>au.org.ala</groupId>
-			<artifactId>ala-nsl-taxamatch</artifactId>
-			<version>1.0</version>
-
-		</dependency>
 		<dependency>
 			<groupId>jdbm</groupId>
 			<artifactId>jdbm</artifactId>

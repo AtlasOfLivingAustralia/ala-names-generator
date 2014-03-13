@@ -12,9 +12,7 @@ import org.apache.lucene.index.IndexReader
 import org.apache.lucene.store.FSDirectory
 import org.apache.lucene.search.IndexSearcher
 import au.org.ala.data.util.RankType
-import au.org.biodiversity.services.taxamatch.impl.TaxamatchServiceImpl
 import java.io.File
-import au.org.biodiversity.services.taxamatch.TaxamatchSpeciesItem
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ArrayBlockingQueue
 import org.scalaquery.simple.StaticQuery._

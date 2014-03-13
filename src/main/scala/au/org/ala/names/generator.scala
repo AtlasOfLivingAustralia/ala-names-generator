@@ -2,7 +2,6 @@ package au.org.ala.names
 
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.BlockingQueue
-import au.org.biodiversity.services.taxamatch.impl.TaxamatchServiceImpl
 import scala.collection.mutable.ArrayBuffer
 import au.org.ala.util.OptionParser
 
@@ -1353,7 +1352,7 @@ object NamesGenerator {
       None
     else {
       try {
-        Some(TaxamatchServiceImpl.treatWord(TaxamatchServiceImpl.normalize(term), if (isSpecies) "species" else "genus"))
+        Some(au.org.ala.util.TaxamatchUtils.treatWord(au.org.ala.util.TaxamatchUtils.normalize(term), if (isSpecies) "species" else "genus"))
       } catch {
         case e: Exception => {
           e.printStackTrace;
