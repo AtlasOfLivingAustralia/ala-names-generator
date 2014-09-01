@@ -20,7 +20,7 @@
 		<repository>
 			<id>scala-tools.org</id>
 			<name>Scala-Tools Maven2 Repository</name>
-			<url>http://scala-tools.org/repo-releases</url>
+			<url>https://oss.sonatype.org/content/repositories/snapshots</url>
 		</repository>
 		<repository>
 			<id>bonecp-repo</id>
@@ -33,7 +33,7 @@
 		<pluginRepository>
 			<id>scala-tools.org</id>
 			<name>Scala-Tools Maven2 Repository</name>
-			<url>http://scala-tools.org/repo-releases</url>
+			<url>https://oss.sonatype.org/content/repositories/snapshots</url>
 		</pluginRepository>
 	</pluginRepositories>
 
