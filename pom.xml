@@ -53,7 +53,7 @@
 		<dependency>
 			<groupId>au.org.ala</groupId>
 			<artifactId>ala-name-matching</artifactId>
-			<version>1.1-SNAPSHOT</version>
+			<version>1.1</version>
 			<exclusions>
 				<exclusion>
 					<groupId>org.gbif</groupId>
