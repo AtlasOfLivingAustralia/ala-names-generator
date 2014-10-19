@@ -23,9 +23,14 @@
 			<url>https://oss.sonatype.org/content/groups/scala-tools</url>
 		</repository>
 		<repository>
-			<id>bonecp-repo</id>
-			<name>BoneCP Repository</name>
+			<id>gbif-repo</id>
+			<name>gbif Repository</name>
 			<url>http://repository.gbif.org/content/repositories/releases</url>
+		</repository>
+		<repository>
+		        <id>ala-repo</id>
+		        <name>Atlas of Living Australia maven repository</name>
+		        <url>http://maven.ala.org.au/repository</url>
 		</repository>
 	</repositories>
 
