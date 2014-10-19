@@ -25,7 +25,7 @@
 		<repository>
 			<id>bonecp-repo</id>
 			<name>BoneCP Repository</name>
-			<url>http://repository.gbif.org</url>
+			<url>http://repository.gbif.org/content/repositories/releases</url>
 		</repository>
 	</repositories>
 
