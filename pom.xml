@@ -25,7 +25,7 @@
 		<repository>
 			<id>bonecp-repo</id>
 			<name>BoneCP Repository</name>
-			<url>http://jolbox.com/bonecp/downloads/maven</url>
+			<url>http://repository.gbif.org</url>
 		</repository>
 	</repositories>
 
@@ -41,7 +41,7 @@
        <dependency>
             <groupId>org.gbif</groupId>
             <artifactId>dwca-reader</artifactId>
-            <version>1.14-SNAPSHOT</version>
+            <version>1.14</version>
             <exclusions>
                 <exclusion>
                     <groupId>commons-io</groupId>
