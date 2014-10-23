@@ -20,12 +20,17 @@
 		<repository>
 			<id>scala-tools.org</id>
 			<name>Scala-Tools Maven2 Repository</name>
-			<url>http://scala-tools.org/repo-releases</url>
+			<url>https://oss.sonatype.org/content/groups/scala-tools</url>
 		</repository>
 		<repository>
-			<id>bonecp-repo</id>
-			<name>BoneCP Repository</name>
-			<url>http://jolbox.com/bonecp/downloads/maven</url>
+			<id>gbif-repo</id>
+			<name>gbif Repository</name>
+			<url>http://repository.gbif.org/content/repositories/releases</url>
+		</repository>
+		<repository>
+		        <id>ala-repo</id>
+		        <name>Atlas of Living Australia maven repository</name>
+		        <url>http://maven.ala.org.au/repository</url>
 		</repository>
 	</repositories>
 
@@ -33,7 +38,7 @@
 		<pluginRepository>
 			<id>scala-tools.org</id>
 			<name>Scala-Tools Maven2 Repository</name>
-			<url>http://scala-tools.org/repo-releases</url>
+			<url>https://oss.sonatype.org/content/groups/scala-tools</url>
 		</pluginRepository>
 	</pluginRepositories>
 
@@ -41,7 +46,7 @@
        <dependency>
             <groupId>org.gbif</groupId>
             <artifactId>dwca-reader</artifactId>
-            <version>1.14-SNAPSHOT</version>
+            <version>1.14</version>
             <exclusions>
                 <exclusion>
                     <groupId>commons-io</groupId>
@@ -53,7 +58,7 @@
 		<dependency>
 			<groupId>au.org.ala</groupId>
 			<artifactId>ala-name-matching</artifactId>
-			<version>1.1-SNAPSHOT</version>
+			<version>1.3</version>
 			<exclusions>
 				<exclusion>
 					<groupId>org.gbif</groupId>
@@ -132,7 +137,12 @@
 			<artifactId>commons-collections</artifactId>
 			<version>3.1</version>
 		</dependency>
-
+		<dependency>
+                        <groupId>junit</groupId>
+                        <artifactId>junit</artifactId>
+                        <version>4.11</version>
+                        <!-- <scope>test</scope> -->
+                </dependency>
 	</dependencies>
 
 	<build>
@@ -142,7 +152,7 @@
 			<plugin>
 				<groupId>org.scala-tools</groupId>
 				<artifactId>maven-scala-plugin</artifactId>
-				<version>2.15.2-SNAPSHOT</version>
+				<version>2.15.2</version>
 				<executions>
 					<execution>
 						<id>scala-compile-first</id>
@@ -234,4 +244,17 @@
 			</plugin>
 		</plugins>
 	</build>
+
+        <distributionManagement>
+                <repository>
+                        <id>ala-repo</id>
+                        <name>Internal Releases</name>
+                        <url>http://ala-wonder.it.csiro.au/nexus/content/repositories/releases/</url>
+                </repository>
+                <snapshotRepository>
+                        <id>ala-repo</id>
+                        <name>Internal Releases</name>
+                        <url>http://ala-wonder.it.csiro.au/nexus/content/repositories/snapshots/</url>
+                </snapshotRepository>
+        </distributionManagement>
 </project>
