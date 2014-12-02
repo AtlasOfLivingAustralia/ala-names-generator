@@ -1,5 +1,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+        <parent>
+            <groupId>au.org.ala</groupId>
+            <artifactId>ala-parent-pom</artifactId>
+            <version>1.0</version>
+        </parent>
+
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>au.org.ala</groupId>
 	<artifactId>ala-names-generator</artifactId>
@@ -15,32 +22,6 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
-
-	<repositories>
-		<repository>
-			<id>scala-tools.org</id>
-			<name>Scala-Tools Maven2 Repository</name>
-			<url>https://oss.sonatype.org/content/groups/scala-tools</url>
-		</repository>
-		<repository>
-			<id>gbif-repo</id>
-			<name>gbif Repository</name>
-			<url>http://repository.gbif.org/content/repositories/releases</url>
-		</repository>
-		<repository>
-		        <id>ala-repo</id>
-		        <name>Atlas of Living Australia maven repository</name>
-		        <url>http://maven.ala.org.au/repository</url>
-		</repository>
-	</repositories>
-
-	<pluginRepositories>
-		<pluginRepository>
-			<id>scala-tools.org</id>
-			<name>Scala-Tools Maven2 Repository</name>
-			<url>https://oss.sonatype.org/content/groups/scala-tools</url>
-		</pluginRepository>
-	</pluginRepositories>
 
 	<dependencies>
        <dependency>
@@ -245,17 +226,4 @@
 			</plugin>
 		</plugins>
 	</build>
-
-        <distributionManagement>
-                <repository>
-                        <id>ala-repo</id>
-                        <name>Internal Releases</name>
-                        <url>http://ala-wonder.it.csiro.au/nexus/content/repositories/releases/</url>
-                </repository>
-                <snapshotRepository>
-                        <id>ala-repo</id>
-                        <name>Internal Releases</name>
-                        <url>http://ala-wonder.it.csiro.au/nexus/content/repositories/snapshots/</url>
-                </snapshotRepository>
-        </distributionManagement>
 </project>
