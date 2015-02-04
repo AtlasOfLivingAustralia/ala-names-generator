@@ -1,5 +1,5 @@
 ### ala-names-generator   [![Build Status](https://travis-ci.org/AtlasOfLivingAustralia/ala-names-generator.svg?branch=master)](https://travis-ci.org/AtlasOfLivingAustralia/ala-names-generator)
-```
+
 This file outlines the steps that need to be performed to generate an ALA names list.
 
 Some of the steps are manual.  It may be nice to incorporate them into a complete package.
@@ -73,4 +73,4 @@ o) --kingdoms: Incorporates all the CoL kingdoms that are missing from the NSL. 
 
 8) Dump the ALA accepted concepts and synonyms to file. 
 mysql -uroot -ppassword < create-dumps.sql
-```
+
