@@ -20,6 +20,9 @@
 		<encoding>UTF-8</encoding>
 		<scala.version>2.9.1</scala.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<targetJdk>1.7</targetJdk>
+		<animal-sniffer-signature.artifact>java17</animal-sniffer-signature.artifact>
+		<animal-sniffer-signature.version>1.0</animal-sniffer-signature.version>		
 	</properties>
 
 
